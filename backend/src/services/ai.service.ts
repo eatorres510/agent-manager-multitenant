@@ -99,18 +99,19 @@ class AIService {
     history: ChatMessage[],
     tenantId: string,
     conversationId: string,
-    config: AgentConfig
+    config: AgentConfig,
+    customerPhone?: string
   ): Promise<string> {
     if (config.active_provider === 'gemini') {
       if (!config.gemini_api_key) {
         throw new Error('Gemini API Key is missing. Configure it in the panel.');
       }
-      return this.callGemini(userMessage, history, tenantId, conversationId, config);
+      return this.callGemini(userMessage, history, tenantId, conversationId, config, customerPhone);
     } else {
       if (!config.deepseek_api_key) {
         throw new Error('DeepSeek API Key is missing. Configure it in the panel.');
       }
-      return this.callDeepSeek(userMessage, history, tenantId, conversationId, config);
+      return this.callDeepSeek(userMessage, history, tenantId, conversationId, config, customerPhone);
     }
   }
 
@@ -119,7 +120,8 @@ class AIService {
     history: ChatMessage[],
     tenantId: string,
     conversationId: string,
-    config: AgentConfig
+    config: AgentConfig,
+    customerPhone?: string
   ): Promise<string> {
     try {
       const ai = new GoogleGenerativeAI(config.gemini_api_key);
@@ -166,6 +168,11 @@ class AIService {
               await configService.logProductQuery(tenantId, p.id, p.name, conversationId).catch(err => {
                 console.error('[Analytics Error] Failed to log product query:', err);
               });
+              if (p.stock === 0) {
+                await configService.logLostSale(tenantId, p.id, p.name, customerPhone || 'Cliente WhatsApp', conversationId).catch(err => {
+                  console.error('[Lost Sale Error] Failed to log lost sale:', err);
+                });
+              }
             }
           }
         } else if (call.name === 'get_faq_info') {
@@ -222,7 +229,8 @@ class AIService {
     history: ChatMessage[],
     tenantId: string,
     conversationId: string,
-    config: AgentConfig
+    config: AgentConfig,
+    customerPhone?: string
   ): Promise<string> {
     try {
       const apiKey = config.deepseek_api_key;
@@ -352,6 +360,11 @@ class AIService {
               await configService.logProductQuery(tenantId, p.id, p.name, conversationId).catch(err => {
                 console.error('[Analytics Error] Failed to log product query:', err);
               });
+              if (p.stock === 0) {
+                await configService.logLostSale(tenantId, p.id, p.name, customerPhone || 'Cliente WhatsApp', conversationId).catch(err => {
+                  console.error('[Lost Sale Error] Failed to log lost sale:', err);
+                });
+              }
             }
           }
         } else if (call.function.name === 'get_faq_info') {

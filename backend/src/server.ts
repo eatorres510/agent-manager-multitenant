@@ -155,11 +155,9 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
       const conversationId = payload.conversation.id;
       const accountId = payload.account.id;
       const userMessage = payload.content;
-
-      console.log(`[Webhook] Mensaje recibido en conv ${conversationId} de '${tenantId}': "${userMessage}"`);
-
+      const customerPhone = payload.sender?.phone_number || payload.conversation?.meta?.sender?.phone_number || '';
       // Process message asynchronously
-      handleIncomingMessage(tenantId, conversationId, accountId, userMessage).catch((err) => {
+      handleIncomingMessage(tenantId, conversationId, accountId, userMessage, customerPhone).catch((err) => {
         console.error(`[Webhook Error] Error procesando respuesta para ${tenantId}:`, err);
       });
     }
@@ -171,7 +169,7 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
 });
 
 // Helper function to process the message and respond to Chatwoot
-async function handleIncomingMessage(tenantId: string, conversationId: number, accountId: number, userMessage: string) {
+async function handleIncomingMessage(tenantId: string, conversationId: number, accountId: number, userMessage: string, customerPhone?: string) {
   const config = await configService.getConfig(tenantId);
   const kb = await configService.getKnowledgeBase(tenantId);
 
@@ -227,7 +225,8 @@ REGLAS DE TRANSFERENCIA A ASESOR:
       {
         ...config,
         system_prompt: fullSystemPrompt
-      }
+      },
+      customerPhone
     );
   } catch (error: any) {
     console.error(`[AI Error - Tenant: ${tenantId}]`, error);
@@ -583,13 +582,14 @@ app.post('/api/products/sync', authenticateToken, async (req: AuthRequest, res) 
   }
   try {
     const products = req.body;
+    const mode = req.query.mode === 'incremental' ? 'incremental' : 'full';
 
     if (!Array.isArray(products)) {
       return res.status(400).json({ error: 'El cuerpo de la petición debe ser un arreglo de productos.' });
     }
 
-    await configService.syncProducts(tenantId, products);
-    res.json({ success: true, count: products.length });
+    await configService.syncProducts(tenantId, products, mode);
+    res.json({ success: true, count: products.length, mode });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -634,6 +634,32 @@ app.get('/api/analytics/products', authenticateToken, async (req: AuthRequest, r
     const tenantId = req.user!.tenant_id;
     const stats = await configService.getProductAnalytics(tenantId);
     res.json(stats);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET lost sales list for current tenant
+app.get('/api/analytics/lost-sales', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenant_id;
+    const list = await configService.getLostSales(tenantId);
+    res.json(list);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE lost sale by ID
+app.delete('/api/analytics/lost-sales/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura. No puedes eliminar registros de venta perdida.' });
+  }
+  try {
+    const tenantId = req.user!.tenant_id;
+    const id = parseInt(req.params.id);
+    await configService.deleteLostSale(tenantId, id);
+    res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

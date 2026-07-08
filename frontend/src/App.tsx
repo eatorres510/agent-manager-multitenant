@@ -61,7 +61,7 @@ interface ToastMessage {
   type: 'success' | 'error';
 }
 
-type TabType = 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments';
+type TabType = 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs';
 
 function App() {
   // Auth state
@@ -143,6 +143,18 @@ function App() {
   const [appointments, setAppointments] = useState<AppointmentInfo[]>([]);
   const [fetchingAppointments, setFetchingAppointments] = useState(false);
   const [selectedDate, setSelectedDate] = useState('2026-07-15');
+  
+  interface LostSaleInfo {
+    id: number;
+    tenant_id: string;
+    product_id: string;
+    product_name: string;
+    customer_phone: string;
+    conversation_id: string;
+    timestamp: string;
+  }
+  const [lostSales, setLostSales] = useState<LostSaleInfo[]>([]);
+  const [fetchingLostSales, setFetchingLostSales] = useState(false);
   const [showManualBookingModal, setShowManualBookingModal] = useState(false);
   const [manualBookingTime, setManualBookingTime] = useState('');
   const [manualCustomerName, setManualCustomerName] = useState('');
@@ -207,6 +219,7 @@ function App() {
       fetchLogs();
       fetchUsers();
       fetchAppointments();
+      fetchLostSales();
       if (role === 'superadmin') {
         fetchTenants();
       }
@@ -446,6 +459,39 @@ function App() {
       showToast(err.message, 'error');
     } finally {
       setBookingManual(false);
+    }
+  };
+
+  const fetchLostSales = async () => {
+    try {
+      setFetchingLostSales(true);
+      const res = await fetch('/api/analytics/lost-sales', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLostSales(data);
+      }
+    } catch (e) {
+      console.error('Error fetching lost sales:', e);
+    } finally {
+      setFetchingLostSales(false);
+    }
+  };
+
+  const handleDeleteLostSale = async (id: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este registro de venta perdida?')) return;
+    try {
+      const res = await fetch(`/api/analytics/lost-sales/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error eliminando venta perdida');
+      showToast('Registro eliminado con éxito');
+      fetchLostSales();
+    } catch (err: any) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -1081,6 +1127,55 @@ function App() {
             }}
           >
             Usuarios y Tokens
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('lost-sales');
+              fetchLostSales();
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              background: activeTab === 'lost-sales' ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'lost-sales' ? '3px solid #ef4444' : '3px solid transparent',
+              color: activeTab === 'lost-sales' ? '#f87171' : '#9ca3af',
+              padding: '0.75rem 1rem',
+              borderRadius: '0 8px 8px 0',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s'
+            }}
+          >
+            Ventas Perdidas
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('api-docs');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              background: activeTab === 'api-docs' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'api-docs' ? '3px solid #10b981' : '3px solid transparent',
+              color: activeTab === 'api-docs' ? '#34d399' : '#9ca3af',
+              padding: '0.75rem 1rem',
+              borderRadius: '0 8px 8px 0',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s'
+            }}
+          >
+            Portal de API & Docs
           </button>
 
           {role === 'superadmin' && (
@@ -2230,6 +2325,272 @@ function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'lost-sales' && (
+            <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+              <h2 className="card-title" style={{ color: '#ef4444' }}>
+                📈 Reporte de Oportunidades & Ventas Perdidas
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.4 }}>
+                A continuación se listan las búsquedas de productos agotados (stock = 0) consultados por los clientes en WhatsApp. Utiliza esta lista para contactar a los clientes interesados una vez que vuelva a ingresar mercadería en tu ERP.
+              </p>
+
+              {fetchingLostSales ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Cargando oportunidades perdidas...</div>
+              ) : lostSales.length === 0 ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '3rem', 
+                  border: '1px dashed var(--border-color)', 
+                  borderRadius: '8px', 
+                  color: 'var(--text-muted)', 
+                  fontSize: '0.9rem' 
+                }}>
+                  ¡Excelente! No hay oportunidades de venta perdida registradas actualmente en el sistema.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'rgba(11, 43, 76, 0.03)', borderBottom: '1px solid var(--border-color)' }}>
+                        <th style={{ padding: '0.75rem' }}>Producto Solicitado</th>
+                        <th style={{ padding: '0.75rem' }}>SKU/ID</th>
+                        <th style={{ padding: '0.75rem' }}>Teléfono Cliente</th>
+                        <th style={{ padding: '0.75rem' }}>Fecha de Consulta</th>
+                        <th style={{ padding: '0.75rem' }}>Conversación ID</th>
+                        {role !== 'readonly' && <th style={{ padding: '0.75rem', textAlign: 'center' }}>Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lostSales.map((ls) => (
+                        <tr key={ls.id} style={{ borderBottom: '1px solid rgba(11, 43, 76, 0.02)' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>{ls.product_name}</td>
+                          <td style={{ padding: '0.75rem', fontFamily: 'monospace', color: '#2563eb', fontWeight: 'bold' }}>{ls.product_id}</td>
+                          <td style={{ padding: '0.75rem', fontWeight: 600, color: '#f59e0b' }}>
+                            {ls.customer_phone || <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No capturado</span>}
+                          </td>
+                          <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>
+                            {new Date(ls.timestamp).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>{ls.conversation_id}</td>
+                          {role !== 'readonly' && (
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <button
+                                onClick={() => handleDeleteLostSale(ls.id)}
+                                style={{
+                                  padding: '0.3rem 0.6rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border-color)',
+                                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                  color: '#10b981',
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                Marcar Atendido ✓
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'api-docs' && (
+            <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out', maxWidth: '900px' }}>
+              <h2 className="card-title" style={{ color: '#10b981' }}>
+                💻 Portal de Integración de API & Documentación
+              </h2>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem', lineHeight: 1.5 }}>
+                Esta documentación describe los endpoints disponibles para sincronizar tu catálogo de productos desde tu ERP y registrar citas de manera externa en tu cuenta de inquilino.
+              </p>
+
+              {/* API Token Badge */}
+              <div style={{
+                backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '2rem'
+              }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '0.95rem' }}>🔑 Tu API Token JWT (Autorización Bearer):</h4>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <code style={{ 
+                    flex: 1,
+                    padding: '0.5rem 0.75rem', 
+                    backgroundColor: '#1f2937', 
+                    borderRadius: '6px', 
+                    fontSize: '0.8rem', 
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                    color: '#e2e8f0',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    {token ? `${token.slice(0, 50)}...` : 'Token no disponible'}
+                  </code>
+                  <button
+                    onClick={() => {
+                      if (token) {
+                        navigator.clipboard.writeText(token);
+                        showToast('Token copiado al portapapeles');
+                      }
+                    }}
+                    className="btn-primary"
+                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                  >
+                    Copiar Token
+                  </button>
+                </div>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  ⚠️ Este token tiene una validez de 30 días. Recuerda mantenerlo en secreto para proteger tu catálogo.
+                </p>
+              </div>
+
+              {/* Endpoints List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+                
+                {/* Endpoint 1 */}
+                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                    <span style={{ 
+                      padding: '0.25rem 0.75rem', 
+                      backgroundColor: '#10b981', 
+                      color: '#ffffff', 
+                      borderRadius: '6px', 
+                      fontWeight: 'bold', 
+                      fontSize: '0.85rem' 
+                    }}>
+                      POST
+                    </span>
+                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#e2e8f0' }}>/api/products/sync</strong>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    Sincroniza y actualiza los productos de tu ERP. Admite dos modos de ejecución a través del query parameter <code style={{ color: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>mode</code>:
+                  </p>
+                  <ul style={{ fontSize: '0.85rem', color: 'var(--text-muted)', paddingLeft: '1.25rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    <li><strong style={{ color: '#fff' }}>mode=full</strong> (por defecto): Reemplazo total. Borra todos los productos del catálogo de la empresa e inserta los enviados.</li>
+                    <li><strong style={{ color: '#fff' }}>mode=incremental</strong>: Sincronización parcial optimizada. Realiza un <strong>UPSERT</strong> directo de los productos del lote (los actualiza si existen o los crea si no), sin tocar el resto de productos en la base de datos. ¡Ideal para ventas en tiempo real!</li>
+                  </ul>
+
+                  {/* Code snippet */}
+                  <h5 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Ejemplo de petición cURL:</h5>
+                  <pre style={{ 
+                    padding: '1rem', 
+                    backgroundColor: '#1f2937', 
+                    borderRadius: '8px', 
+                    color: '#34d399', 
+                    overflowX: 'auto', 
+                    fontSize: '0.8rem', 
+                    fontFamily: 'monospace',
+                    border: '1px solid var(--border-color)',
+                    lineHeight: 1.4
+                  }}>
+{`curl -X POST "${window.location.origin}/api/products/sync?mode=incremental" \\
+  -H "Authorization: Bearer TU_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '[
+    {
+      "id": "SKU-9901",
+      "name": "TECLADO MECANICO LOGITECH G413",
+      "price": 1850.00,
+      "stock": 12,
+      "brand": "LOGITECH",
+      "category": "Accesorios",
+      "description": "Teclado retroiluminado rojo con interruptores Romer-G",
+      "url": "https://sicsa.com.ni/teclado-logitech-g413"
+    }
+  ]'`}
+                  </pre>
+                </div>
+
+                {/* Endpoint 2 */}
+                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                    <span style={{ 
+                      padding: '0.25rem 0.75rem', 
+                      backgroundColor: '#3b82f6', 
+                      color: '#ffffff', 
+                      borderRadius: '6px', 
+                      fontWeight: 'bold', 
+                      fontSize: '0.85rem' 
+                    }}>
+                      GET
+                    </span>
+                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#e2e8f0' }}>/api/products</strong>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    Obtiene el catálogo completo de productos sincronizados de tu empresa (retorna hasta un límite de 10,000 registros).
+                  </p>
+                  
+                  <h5 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Ejemplo de petición cURL:</h5>
+                  <pre style={{ 
+                    padding: '1rem', 
+                    backgroundColor: '#1f2937', 
+                    borderRadius: '8px', 
+                    color: '#60a5fa', 
+                    overflowX: 'auto', 
+                    fontSize: '0.8rem', 
+                    fontFamily: 'monospace',
+                    border: '1px solid var(--border-color)',
+                    lineHeight: 1.4
+                  }}>
+{`curl -X GET "${window.location.origin}/api/products" \\
+  -H "Authorization: Bearer TU_API_TOKEN"`}
+                  </pre>
+                </div>
+
+                {/* Endpoint 3 */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                    <span style={{ 
+                      padding: '0.25rem 0.75rem', 
+                      backgroundColor: '#10b981', 
+                      color: '#ffffff', 
+                      borderRadius: '6px', 
+                      fontWeight: 'bold', 
+                      fontSize: '0.85rem' 
+                    }}>
+                      POST
+                    </span>
+                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#e2e8f0' }}>/api/appointments</strong>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    Permite agendar citas de forma externa en el sistema de calendario de tu inquilino (ej. integraciones con otros calendarios o CRMs).
+                  </p>
+                  
+                  <h5 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Ejemplo de petición cURL:</h5>
+                  <pre style={{ 
+                    padding: '1rem', 
+                    backgroundColor: '#1f2937', 
+                    borderRadius: '8px', 
+                    color: '#34d399', 
+                    overflowX: 'auto', 
+                    fontSize: '0.8rem', 
+                    fontFamily: 'monospace',
+                    border: '1px solid var(--border-color)',
+                    lineHeight: 1.4
+                  }}>
+{`curl -X POST "${window.location.origin}/api/appointments" \\
+  -H "Authorization: Bearer TU_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "customer_name": "Maria Lopez",
+    "customer_phone": "+505-8777-6655",
+    "appointment_date": "2026-07-15",
+    "appointment_time": "11:00",
+    "service": "Mantenimiento Técnico"
+  }'`}
+                  </pre>
+                </div>
+
+              </div>
             </div>
           )}
 

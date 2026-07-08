@@ -184,6 +184,19 @@ class ConfigService {
 
       await client.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service VARCHAR(255) DEFAULT 'Servicio Técnico'");
 
+      // 9. Lost Sales table (for tracking out-of-stock interest)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lost_sales (
+          id SERIAL PRIMARY KEY,
+          tenant_id VARCHAR(50) REFERENCES tenants(id) ON DELETE CASCADE,
+          product_id VARCHAR(100) NOT NULL,
+          product_name VARCHAR(255) NOT NULL,
+          customer_phone VARCHAR(50) NOT NULL,
+          conversation_id VARCHAR(100) NOT NULL,
+          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');
@@ -323,21 +336,33 @@ class ConfigService {
     return this.getKnowledgeBase(tenantId);
   }
 
-  // Local Products Sync & Search
-  async syncProducts(tenantId: string, products: Partial<Product>[]) {
+  // Local Products Sync & Search (supports full and incremental modes)
+  async syncProducts(tenantId: string, products: Partial<Product>[], mode: 'full' | 'incremental' = 'full') {
     await this.init();
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      // Delete old products for this tenant
-      await client.query('DELETE FROM products WHERE tenant_id = $1', [tenantId]);
       
-      // Insert new products
+      if (mode === 'full') {
+        // Delete old products for this tenant
+        await client.query('DELETE FROM products WHERE tenant_id = $1', [tenantId]);
+      }
+      
+      // Insert/Upsert new products
       for (const p of products) {
         if (!p.id || !p.name || p.price === undefined) continue;
+        
         await client.query(
           `INSERT INTO products (id, tenant_id, name, price, stock, description, url, category, brand)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (id, tenant_id) DO UPDATE SET
+             name = EXCLUDED.name,
+             price = EXCLUDED.price,
+             stock = EXCLUDED.stock,
+             description = EXCLUDED.description,
+             url = EXCLUDED.url,
+             category = EXCLUDED.category,
+             brand = EXCLUDED.brand`,
           [p.id, tenantId, p.name, p.price, p.stock || 0, p.description || '', p.url || '', p.category || '', p.brand || '']
         );
       }
@@ -500,6 +525,33 @@ class ConfigService {
 
     return allSlots.filter(slot => !bookedSlots.includes(slot));
   }
+
+  // Lost Sales Tracking
+  async logLostSale(tenantId: string, productId: string, productName: string, phone: string, conversationId: string): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      `INSERT INTO lost_sales (tenant_id, product_id, product_name, customer_phone, conversation_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [tenantId, productId, productName, phone, conversationId]
+    );
+  }
+
+  async getLostSales(tenantId: string): Promise<LostSale[]> {
+    await this.init();
+    const res = await this.pool.query(
+      `SELECT id, tenant_id, product_id, product_name, customer_phone, conversation_id, to_char(timestamp, 'YYYY-MM-DD HH24:MI:SS') as timestamp FROM lost_sales WHERE tenant_id = $1 ORDER BY timestamp DESC`,
+      [tenantId]
+    );
+    return res.rows;
+  }
+
+  async deleteLostSale(tenantId: string, id: number): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      `DELETE FROM lost_sales WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id]
+    );
+  }
 }
 
 export interface Appointment {
@@ -511,6 +563,16 @@ export interface Appointment {
   appointment_time: string;
   service: string;
   created_at: string;
+}
+
+export interface LostSale {
+  id: number;
+  tenant_id: string;
+  product_id: string;
+  product_name: string;
+  customer_phone: string;
+  conversation_id: string;
+  timestamp: string;
 }
 
 export const configService = new ConfigService();
