@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: chatwoot-ai-db
+    environment:
+      POSTGRES_USER: ai_admin
+      POSTGRES_PASSWORD: ai_secure_pass_123
+      POSTGRES_DB: ai_platform_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - easypanel-n8n
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_admin -d ai_platform_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ai-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatwoot-ai-platform
+    ports:
+      - '4000:4000'
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - PGHOST=db
+      - PGPORT=5432
+      - PGUSER=ai_admin
+      - PGPASSWORD=ai_secure_pass_123
+      - PGDATABASE=ai_platform_db
+      - JWT_SECRET=ai_jwt_secret_token_98765
+    networks:
+      - default
+      - easypanel-n8n
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  pgdata:
+
+networks:
+  easypanel-n8n:
+    external: true
