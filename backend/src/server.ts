@@ -569,7 +569,7 @@ app.post('/api/knowledge', authenticateToken, async (req: AuthRequest, res) => {
 app.get('/api/products', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenant_id;
-    const products = await configService.getProducts(tenantId, 100);
+    const products = await configService.getProducts(tenantId, 10000);
     res.json(products);
   } catch (e: any) {
     res.status(500).json({ error: e.message });

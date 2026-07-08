@@ -351,7 +351,7 @@ class ConfigService {
     }
   }
 
-  async getProducts(tenantId: string, limit: number = 100): Promise<Product[]> {
+  async getProducts(tenantId: string, limit: number = 10000): Promise<Product[]> {
     await this.init();
     const res = await this.pool.query(
       'SELECT * FROM products WHERE tenant_id = $1 ORDER BY name ASC LIMIT $2',
