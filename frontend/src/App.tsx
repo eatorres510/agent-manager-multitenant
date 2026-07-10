@@ -850,7 +850,7 @@ function App() {
       {/* Left Sidebar */}
       <aside style={{
         width: '280px',
-        backgroundColor: '#0b2b4c',
+        backgroundColor: '#00405c',
         color: '#ffffff',
         display: 'flex',
         flexDirection: 'column',
@@ -865,22 +865,44 @@ function App() {
         boxSizing: 'border-box'
       }}>
         {/* Sidebar Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" style={{ filter: 'drop-shadow(0 2px 8px rgba(37,99,235,0.5))' }}>
-            <rect x="3" y="8" width="18" height="12" rx="3" fill="#3b82f6"/>
-            <path d="M12 2v6M9 2h6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
-            <circle cx="8" cy="14" r="2" fill="#ffffff"/>
-            <circle cx="16" cy="14" r="2" fill="#ffffff"/>
-            <circle cx="8" cy="14" r="0.75" fill="#3b82f6"/>
-            <circle cx="16" cy="14" r="0.75" fill="#3b82f6"/>
-            <path d="M9 18h6" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="1" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
-            <rect x="21" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
-          </svg>
-          <div>
-            <h1 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.2 }}>Agente IA</h1>
-            <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Control Panel</span>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          {tenantId === 'sicsa' ? (
+            <div style={{ padding: '0.25rem 0', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+              <img 
+                src="https://sicsa.com.ni/wp-content/uploads/2023/06/logo-sisca-azul-medium.png" 
+                alt="SICSA Nicaragua Logo" 
+                style={{ 
+                  height: '38px', 
+                  maxWidth: '100%', 
+                  objectFit: 'contain',
+                  filter: 'brightness(0) invert(1)'
+                }} 
+              />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" style={{ filter: 'drop-shadow(0 2px 8px rgba(37,99,235,0.5))' }}>
+                <rect x="3" y="8" width="18" height="12" rx="3" fill="#3b82f6"/>
+                <path d="M12 2v6M9 2h6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="8" cy="14" r="2" fill="#ffffff"/>
+                <circle cx="16" cy="14" r="2" fill="#ffffff"/>
+                <circle cx="8" cy="14" r="0.75" fill="#3b82f6"/>
+                <circle cx="16" cy="14" r="0.75" fill="#3b82f6"/>
+                <path d="M9 18h6" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round"/>
+                <rect x="1" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
+                <rect x="21" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
+              </svg>
+              <div>
+                <h1 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.2 }}>Agente IA</h1>
+                <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Control Panel</span>
+              </div>
+            </div>
+          )}
+          {tenantId === 'sicsa' && (
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              AI Platform
+            </div>
+          )}
         </div>
 
         {/* Current User Badge in Sidebar */}

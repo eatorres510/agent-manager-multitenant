@@ -9,15 +9,15 @@
   --bg-card: #ffffff;
   --bg-input: #f1f5f9;
   --border-color: #e2e8f0;
-  --border-focus: #2563eb;
+  --border-focus: #0068e1;
   
-  --color-primary: #0b2b4c;
-  --color-primary-glow: rgba(11, 43, 76, 0.08);
-  --color-secondary: #2563eb;
-  --color-secondary-glow: rgba(37, 99, 235, 0.08);
+  --color-primary: #00405c;
+  --color-primary-glow: rgba(0, 64, 92, 0.08);
+  --color-secondary: #0068e1;
+  --color-secondary-glow: rgba(0, 104, 225, 0.08);
   --color-success: #10b981;
   --color-danger: #ef4444;
-  --color-warning: #f59e0b;
+  --color-warning: #ff6900;
   
   --text-main: #0f172a;
   --text-muted: #475569;
@@ -70,7 +70,7 @@ body {
   font-size: 2.25rem;
   font-weight: 700;
   margin: 0;
-  background: linear-gradient(135deg, #0b2b4c 0%, #2563eb 100%);
+  background: linear-gradient(135deg, #00405c 0%, #0068e1 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
