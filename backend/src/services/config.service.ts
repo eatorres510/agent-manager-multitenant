@@ -17,6 +17,11 @@ export interface AgentConfig {
   redis_port: number;
   redis_password?: string;
   redis_enabled: number; // 1 = enabled (Redis), 0 = disabled (use local Postgres products)
+  escalation_keywords?: string;
+  max_fallback_attempts?: number;
+  escalation_instructions?: string;
+  allow_ai_escalation?: boolean;
+  escalation_team_id?: number;
 }
 
 export interface User {
@@ -106,6 +111,12 @@ class ConfigService {
           redis_enabled INTEGER DEFAULT 0
         )
       `);
+
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS escalation_keywords TEXT DEFAULT 'humano,asesor,representante,persona,soporte,operador'`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS max_fallback_attempts INTEGER DEFAULT 3`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS escalation_instructions TEXT DEFAULT ''`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS allow_ai_escalation BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS escalation_team_id INTEGER DEFAULT NULL`);
 
       // 4. Conversation logs table
       await client.query(`

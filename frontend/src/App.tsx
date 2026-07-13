@@ -14,6 +14,11 @@ interface AgentConfig {
   redis_port: number;
   redis_password?: string;
   redis_enabled: number;
+  escalation_keywords?: string;
+  max_fallback_attempts?: number;
+  escalation_instructions?: string;
+  allow_ai_escalation?: boolean;
+  escalation_team_id?: number;
 }
 
 interface KnowledgeBase {
@@ -103,7 +108,12 @@ function App() {
     redis_host: 'localhost',
     redis_port: 6379,
     redis_password: '',
-    redis_enabled: 0
+    redis_enabled: 0,
+    escalation_keywords: 'humano,asesor,representante,persona,soporte,operador',
+    max_fallback_attempts: 3,
+    escalation_instructions: '',
+    allow_ai_escalation: true,
+    escalation_team_id: undefined
   });
 
   // Knowledge base state
@@ -1380,6 +1390,75 @@ function App() {
                   rows={15}
                   placeholder="Instrucciones detalladas de interacción, respuestas del catálogo y reglas..."
                 />
+              </div>
+
+              {/* Rules for human escalation */}
+              <div style={{ borderTop: '1px solid var(--border-color)', margin: '1.5rem 0', paddingTop: '1.5rem' }}>
+                <h3 className="card-title" style={{ fontSize: '1.15rem', marginBottom: '1rem', color: 'var(--color-warning)' }}>🚨 Reglas de Escalamiento a Asesor Humano</h3>
+                
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  <input
+                    type="checkbox"
+                    id="allow_ai_escalation"
+                    name="allow_ai_escalation"
+                    checked={config.allow_ai_escalation !== false}
+                    onChange={(e) => setConfig({ ...config, allow_ai_escalation: e.target.checked })}
+                    style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                  />
+                  <label htmlFor="allow_ai_escalation" style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer' }}>
+                    Permitir que la IA decida cuándo escalar (Escalamiento Cognitivo)
+                  </label>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="escalation_instructions">Instrucciones de Escalamiento para la IA</label>
+                  <textarea
+                    id="escalation_instructions"
+                    name="escalation_instructions"
+                    value={config.escalation_instructions || ''}
+                    onChange={handleInputChange}
+                    rows={4}
+                    placeholder="Ej: Escala la conversación de inmediato si el cliente pregunta por créditos especiales, si está muy molesto, o si pide hablar con el gerente."
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="escalation_keywords">Palabras clave para escalar (separadas por comas)</label>
+                    <input
+                      type="text"
+                      id="escalation_keywords"
+                      name="escalation_keywords"
+                      value={config.escalation_keywords || ''}
+                      onChange={handleInputChange}
+                      placeholder="humano, asesor, soporte, queja"
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label htmlFor="max_fallback_attempts">Intentos fallidos máximos antes de escalar</label>
+                    <input
+                      type="number"
+                      id="max_fallback_attempts"
+                      name="max_fallback_attempts"
+                      value={config.max_fallback_attempts || 3}
+                      onChange={handleInputChange}
+                      placeholder="3"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginTop: '1rem' }}>
+                  <label htmlFor="escalation_team_id">ID del Equipo Destino en Chatwoot (Opcional)</label>
+                  <input
+                    type="number"
+                    id="escalation_team_id"
+                    name="escalation_team_id"
+                    value={config.escalation_team_id || ''}
+                    onChange={(e) => setConfig({ ...config, escalation_team_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                    placeholder="Ej: 3 (Asignará el chat a ese equipo en Chatwoot al escalar)"
+                  />
+                </div>
               </div>
 
               {/* Chatwoot Configuration */}

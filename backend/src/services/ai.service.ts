@@ -93,6 +93,21 @@ const geminiBookAppointmentTool = {
   },
 };
 
+const geminiEscalateToHumanTool = {
+  name: 'escalate_to_human',
+  description: 'Transfiere la conversación a un asesor humano de inmediato si el usuario lo solicita de forma directa, o si su consulta es un reclamo o queja compleja.',
+  parameters: {
+    type: 'OBJECT' as any,
+    properties: {
+      reason: {
+        type: 'STRING' as any,
+        description: 'La razón o motivo del escalamiento (ej: "Usuario enojado", "Solicitud de crédito especial", "Reclamo de soporte").'
+      }
+    },
+    required: ['reason']
+  }
+};
+
 class AIService {
   async generateResponse(
     userMessage: string,
@@ -125,18 +140,22 @@ class AIService {
   ): Promise<string> {
     try {
       const ai = new GoogleGenerativeAI(config.gemini_api_key);
+      const functionDeclarations = [
+        geminiSearchProductsTool,
+        geminiGetFaqInfoTool,
+        geminiGetBusinessInfoTool,
+        geminiCheckAvailabilityTool,
+        geminiBookAppointmentTool
+      ];
+
+      if (config.allow_ai_escalation !== false) {
+        functionDeclarations.push(geminiEscalateToHumanTool);
+      }
+
       const model = ai.getGenerativeModel({
         model: 'gemini-2.5-flash',
         systemInstruction: config.system_prompt,
-        tools: [{
-          functionDeclarations: [
-            geminiSearchProductsTool,
-            geminiGetFaqInfoTool,
-            geminiGetBusinessInfoTool,
-            geminiCheckAvailabilityTool,
-            geminiBookAppointmentTool
-          ]
-        }]
+        tools: [{ functionDeclarations }]
       });
 
       const contents: any[] = [
@@ -149,6 +168,7 @@ class AIService {
 
       let response = await model.generateContent({ contents });
       let functionCalls = response.response.functionCalls();
+      let shouldEscalate = false;
 
       if (functionCalls && functionCalls.length > 0) {
         const call = functionCalls[0];
@@ -195,6 +215,11 @@ class AIService {
           } catch (err: any) {
             result = `Error al registrar cita: El horario de las ${args.time} el día ${args.date} ya está ocupado. Por favor consulta la disponibilidad de nuevo y elige otra hora.`;
           }
+        } else if (call.name === 'escalate_to_human') {
+          const args = call.args as { reason: string };
+          shouldEscalate = true;
+          result = JSON.stringify({ success: true, message: `Conversación programada para escalar a asesor humano. Razón: ${args.reason}` });
+          console.log(`[Escalation Tool Triggered] Razón dada por la IA: ${args.reason}`);
         }
 
         // Return function output to Gemini context
@@ -210,8 +235,11 @@ class AIService {
         });
 
         const finalResponse = await model.generateContent({ contents });
-        const text = finalResponse.response.text();
+        let text = finalResponse.response.text();
         if (!text) throw new Error('Empty response from Gemini after Tool execution');
+        if (shouldEscalate && !text.includes('[ESCALAR]')) {
+          text += ' [ESCALAR]';
+        }
         return text;
       }
 
@@ -243,7 +271,7 @@ class AIService {
         { role: 'user', content: userMessage }
       ];
 
-      const tools = [
+      const tools: any[] = [
         {
           type: 'function',
           function: {
@@ -317,6 +345,23 @@ class AIService {
         }
       ];
 
+      if (config.allow_ai_escalation !== false) {
+        tools.push({
+          type: 'function',
+          function: {
+            name: 'escalate_to_human',
+            description: 'Transfiere la conversación a un asesor humano de inmediato si el usuario lo solicita de forma directa, o si su consulta es un reclamo o queja compleja.',
+            parameters: {
+              type: 'object',
+              properties: {
+                reason: { type: 'string', description: 'La razón o motivo del escalamiento (ej: "Usuario enojado").' }
+              },
+              required: ['reason']
+            }
+          }
+        });
+      }
+
       let response = await axios.post(
         'https://api.deepseek.com/v1/chat/completions',
         {
@@ -342,6 +387,8 @@ class AIService {
       }
 
       const toolCalls = choice.message.tool_calls;
+      let shouldEscalate = false;
+
       if (toolCalls && toolCalls.length > 0) {
         const call = toolCalls[0];
         let result = '';
@@ -387,6 +434,11 @@ class AIService {
           } catch (err: any) {
             result = `Error al registrar cita: El horario de las ${args.time} el día ${args.date} ya está ocupado. Por favor consulta la disponibilidad de nuevo y elige otra hora.`;
           }
+        } else if (call.function.name === 'escalate_to_human') {
+          const args = JSON.parse(call.function.arguments) as { reason: string };
+          shouldEscalate = true;
+          result = JSON.stringify({ success: true, message: `Conversación programada para escalar a asesor humano. Razón: ${args.reason}` });
+          console.log(`[DeepSeek Escalation Tool Triggered] Razón dada por la IA: ${args.reason}`);
         }
 
         // Push assistant call and tool output to chat log
@@ -418,10 +470,18 @@ class AIService {
         if (!finalChoice || !finalChoice.message?.content) {
           throw new Error('Invalid final response structure from DeepSeek API');
         }
-        return finalChoice.message.content;
+        let finalText = finalChoice.message.content;
+        if (shouldEscalate && !finalText.includes('[ESCALAR]')) {
+          finalText += ' [ESCALAR]';
+        }
+        return finalText;
       }
 
-      return choice.message.content;
+      let finalText = choice.message.content;
+      if (shouldEscalate && !finalText.includes('[ESCALAR]')) {
+        finalText += ' [ESCALAR]';
+      }
+      return finalText;
     } catch (e: any) {
       console.error('Error calling DeepSeek:', e);
       const errMsg = e.response?.data?.error?.message || e.message || e;

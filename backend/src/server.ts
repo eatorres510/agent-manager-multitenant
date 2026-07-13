@@ -133,6 +133,84 @@ function isWithinWorkingHours(kb: KnowledgeBase): { isOpen: boolean; currentTime
 // -------------------------------------------------------------
 // WEBHOOK (Tenant Specific - Unauthenticated)
 // -------------------------------------------------------------
+// Keep track of message IDs sent by our bot to distinguish them from human responses
+const botSentMessages = new Set<string>();
+
+// Helper to escalate conversation in Chatwoot
+async function escalateConversation(tenantId: string, conversationId: number, accountId: number, config: AgentConfig, reason: string) {
+  try {
+    console.log(`[Escalation - Tenant: ${tenantId}] Transfiriendo conversación ${conversationId} a un humano (estado: open)...`);
+    
+    // 1. Change status to open
+    const convUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}`;
+    await axios.put(
+      convUrl,
+      { status: 'open' },
+      { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+    );
+
+    // 2. Add label 'bot-escalado'
+    const labelUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/labels`;
+    await axios.post(
+      labelUrl,
+      { labels: ['bot-escalado'] },
+      { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+    ).catch(err => console.error(`[Label Error] Failed to add label:`, err.message));
+
+    // 3. Post private note notifying agents
+    const msgUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+    await axios.post(
+      msgUrl,
+      {
+        content: `⚠️ [Bot] Conversación escalada automáticamente.\nMotivo: ${reason}`,
+        message_type: 'outgoing',
+        private: true
+      },
+      { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+    ).catch(err => console.error(`[Note Error] Failed to add private note:`, err.message));
+
+    // 4. Assign to team if configured
+    if (config.escalation_team_id) {
+      console.log(`[Escalation] Asignando conversación a equipo ID: ${config.escalation_team_id}`);
+      const assignUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/assignments`;
+      await axios.post(
+        assignUrl,
+        { team_id: config.escalation_team_id },
+        { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+      ).catch(err => console.error(`[Team Assignment Error] Failed to assign team:`, err.response?.data || err.message));
+    }
+  } catch (err: any) {
+    console.error(`[Escalation System Error - Tenant: ${tenantId}]`, err.response?.data || err.message);
+  }
+}
+
+// Helper to check consecutive fallback counts from database logs
+async function checkFallbackEscalation(tenantId: string, conversationId: number, config: AgentConfig): Promise<boolean> {
+  const maxFallbacks = config.max_fallback_attempts || 3;
+  const logs = await configService.getConversationLogs(tenantId, conversationId.toString());
+  
+  // Filter assistant logs, sorted from newest to oldest (default from getConversationLogs is newest first)
+  const assistantLogs = logs.filter(l => l.role === 'assistant');
+  
+  if (assistantLogs.length < maxFallbacks) {
+    return false;
+  }
+  
+  const recentResponses = assistantLogs.slice(0, maxFallbacks);
+  
+  const allAreFallbacks = recentResponses.every(l => {
+    const text = l.content.toLowerCase();
+    return text.includes('lo siento') || 
+           text.includes('no tengo información') || 
+           text.includes('inconveniente técnico') ||
+           text.includes('presento un inconveniente') ||
+           text.includes('no cuento con información');
+  });
+  
+  return allAreFallbacks;
+}
+
+// Webhook route
 app.post('/api/webhook/:tenantId?', async (req, res) => {
   const tenantId = req.params.tenantId || 'demo';
   const payload = req.body;
@@ -143,23 +221,89 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
     const tenant = await configService.getTenant(tenantId);
     if (!tenant) {
       console.warn(`[Webhook Error] Tenant '${tenantId}' no registrado en la plataforma.`);
-      return res.status(404).json({ error: 'Tenant no encontrado.' });
+      return res.status(204).json({ error: 'Tenant no encontrado.' });
     }
 
-    if (
-      payload.event === 'message_created' &&
-      payload.message_type === 'incoming' &&
-      payload.conversation &&
-      payload.content
-    ) {
+    if (payload.conversation) {
       const conversationId = payload.conversation.id;
-      const accountId = payload.account.id;
-      const userMessage = payload.content;
-      const customerPhone = payload.sender?.phone_number || payload.conversation?.meta?.sender?.phone_number || '';
-      // Process message asynchronously
-      handleIncomingMessage(tenantId, conversationId, accountId, userMessage, customerPhone).catch((err) => {
-        console.error(`[Webhook Error] Error procesando respuesta para ${tenantId}:`, err);
-      });
+      const status = payload.conversation.status;
+      const assigneeId = payload.conversation.assignee_id || (payload.conversation.assignee && payload.conversation.assignee.id);
+
+      // 1. Detect human takeover (outgoing message from human agent)
+      if (payload.event === 'message_created' && payload.message_type === 'outgoing') {
+        const messageId = payload.id;
+        if (!botSentMessages.has(`${tenantId}:${messageId}`)) {
+          console.log(`[Handover] Agente humano respondió en conversación ${conversationId}. Cambiando a open para desactivar el bot.`);
+          if (status === 'pending') {
+            const config = await configService.getConfig(tenantId);
+            await escalateConversation(
+              tenantId, 
+              conversationId, 
+              payload.account.id, 
+              config, 
+              "Toma de control manual por agente humano (mensaje saliente detectado)."
+            );
+          }
+          return res.status(200).json({ status: 'handover_processed' });
+        }
+      }
+
+      // 2. Process incoming messages (only if pending and not assigned to a human)
+      if (
+        payload.event === 'message_created' &&
+        payload.message_type === 'incoming' &&
+        payload.content
+      ) {
+        if (status === 'open' || assigneeId) {
+          console.log(`[Webhook Ignore] Conversación ${conversationId} tiene estado '${status}' o asignado ${assigneeId}. Ignorando bot.`);
+          return res.status(200).json({ status: 'ignored_by_bot' });
+        }
+
+        const accountId = payload.account.id;
+        const userMessage = payload.content;
+        const customerPhone = payload.sender?.phone_number || payload.conversation?.meta?.sender?.phone_number || '';
+
+        // Check for quick keyword-based escalation
+        const config = await configService.getConfig(tenantId);
+        const keywords = (config.escalation_keywords || 'humano,asesor,representante,persona,soporte,operador')
+          .split(',')
+          .map(kw => kw.trim().toLowerCase())
+          .filter(kw => kw.length > 0);
+          
+        const lowercaseMsg = userMessage.toLowerCase();
+        const matchedKeyword = keywords.find(kw => lowercaseMsg.includes(kw));
+        
+        if (matchedKeyword) {
+          console.log(`[Webhook Escalation] Palabra clave '${matchedKeyword}' detectada en el mensaje.`);
+          await escalateConversation(
+            tenantId, 
+            conversationId, 
+            accountId, 
+            config, 
+            `Usuario solicitó asistencia humana mediante palabra clave: "${matchedKeyword}"`
+          );
+          // Send a final message to the client
+          const welcomeMessage = "Te estoy transfiriendo con un asesor de servicio en este momento. ¡Un momento, por favor! 😊";
+          const msgUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+          const chatwootRes = await axios.post(
+            msgUrl,
+            { content: welcomeMessage, message_type: 'outgoing' },
+            { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+          );
+          if (chatwootRes.data && chatwootRes.data.id) {
+            botSentMessages.add(`${tenantId}:${chatwootRes.data.id}`);
+            setTimeout(() => botSentMessages.delete(`${tenantId}:${chatwootRes.data.id}`), 60000);
+          }
+          await configService.logMessage(tenantId, conversationId.toString(), 'user', userMessage);
+          await configService.logMessage(tenantId, conversationId.toString(), 'assistant', welcomeMessage);
+          return res.status(200).json({ status: 'escalated_via_keyword' });
+        }
+
+        // Process message asynchronously
+        handleIncomingMessage(tenantId, conversationId, accountId, userMessage, customerPhone).catch((err) => {
+          console.error(`[Webhook Error] Error procesando respuesta para ${tenantId}:`, err);
+        });
+      }
     }
   } catch (err) {
     console.error(`[Webhook System Error]`, err);
@@ -183,9 +327,9 @@ async function handleIncomingMessage(tenantId: string, conversationId: number, a
   await configService.logMessage(tenantId, conversationId.toString(), 'user', userMessage);
 
   // 2. Fetch recent conversation history from logs to provide context to LLM
-  const dbLogs = await configService.getLogs(tenantId, 10);
+  const dbLogs = await configService.getConversationLogs(tenantId, conversationId.toString());
   const history: ChatMessage[] = dbLogs
-    .filter(log => log.conversation_id === conversationId.toString())
+    .slice(0, 10)
     .reverse()
     .map(log => ({
       role: log.role === 'user' ? 'user' : 'assistant',
@@ -203,6 +347,10 @@ async function handleIncomingMessage(tenantId: string, conversationId: number, a
   // Assemble the lightweight dynamic system prompt with escalation rules and system prompt
   const fullSystemPrompt = `
 ${config.system_prompt}
+
+=== INSTRUCCIONES ADICIONALES DE ESCALAMIENTO ===
+${config.escalation_instructions || 'Usa tu criterio para escalar con la herramienta escalate_to_human si la consulta es un reclamo complejo o requiere atención humana.'}
+Si decides escalar, usa la herramienta o termina tu mensaje con [ESCALAR] si está abierto.
 
 === ESTADO ACTUAL DE ATENCIÓN ===
 - Estado de la Tienda: ${hours.statusDescription}
@@ -238,7 +386,8 @@ REGLAS DE TRANSFERENCIA A ASESOR:
   }
 
   // Check if AI response triggers human escalation
-  const shouldEscalate = aiResponse.includes('[ESCALAR]');
+  let shouldEscalate = aiResponse.includes('[ESCALAR]');
+  let escalationReason = "IA solicitó transferencia mediante palabra clave [ESCALAR] o invocación de herramienta.";
   if (shouldEscalate) {
     // Strip the escalation tag before posting to Chatwoot
     aiResponse = aiResponse.replace('[ESCALAR]', '').trim();
@@ -249,7 +398,7 @@ REGLAS DE TRANSFERENCIA A ASESOR:
     const chatwootUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
     console.log(`[Chatwoot API - Tenant: ${tenantId}] Enviando respuesta a: ${chatwootUrl}`);
     
-    await axios.post(
+    const chatwootRes = await axios.post(
       chatwootUrl,
       {
         content: aiResponse,
@@ -263,27 +412,45 @@ REGLAS DE TRANSFERENCIA A ASESOR:
       }
     );
 
+    if (chatwootRes.data && chatwootRes.data.id) {
+      botSentMessages.add(`${tenantId}:${chatwootRes.data.id}`);
+      setTimeout(() => botSentMessages.delete(`${tenantId}:${chatwootRes.data.id}`), 60000);
+    }
+
     // 6. Log the assistant response
     await configService.logMessage(tenantId, conversationId.toString(), 'assistant', aiResponse);
 
-    // 7. Perform Escalation in Chatwoot if triggered
-    if (shouldEscalate) {
-      console.log(`[Escalation - Tenant: ${tenantId}] Transfiriendo conversación ${conversationId} a un humano (estado: open)...`);
-      const convUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}`;
-      await axios.put(
-        convUrl,
-        {
-          status: 'open' // Chatwoot expects 'open', 'resolved', 'pending', or 'snoozed'
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'api_access_token': config.chatwoot_access_token
+    // 7. Check if we hit consecutive fallbacks from logs (rule-based fallback limit)
+    if (!shouldEscalate) {
+      const isFallback = aiResponse.toLowerCase().includes('lo siento') || 
+                         aiResponse.toLowerCase().includes('no tengo información') ||
+                         aiResponse.toLowerCase().includes('no cuento con información');
+                         
+      if (isFallback) {
+        const hitLimit = await checkFallbackEscalation(tenantId, conversationId, config);
+        if (hitLimit) {
+          shouldEscalate = true;
+          escalationReason = `Se alcanzó el número máximo de respuestas fallidas consecutivas (${config.max_fallback_attempts || 3}).`;
+          
+          // Send notification of fallback escalation to client
+          const followUpMessage = "Veo que no he podido responder tus dudas de forma correcta. Te estoy transfiriendo con un asesor humano para ayudarte. 😊";
+          const followUpRes = await axios.post(
+            chatwootUrl,
+            { content: followUpMessage, message_type: 'outgoing' },
+            { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+          );
+          if (followUpRes.data && followUpRes.data.id) {
+            botSentMessages.add(`${tenantId}:${followUpRes.data.id}`);
+            setTimeout(() => botSentMessages.delete(`${tenantId}:${followUpRes.data.id}`), 60000);
           }
+          await configService.logMessage(tenantId, conversationId.toString(), 'assistant', followUpMessage);
         }
-      ).catch(e => {
-        console.error(`[Escalation Error - Tenant: ${tenantId}] Failed to update conversation status:`, e.response?.data || e.message);
-      });
+      }
+    }
+
+    // 8. Perform Escalation in Chatwoot if triggered
+    if (shouldEscalate) {
+      await escalateConversation(tenantId, conversationId, accountId, config, escalationReason);
     }
   } catch (error: any) {
     console.error(`[Chatwoot API Error - Tenant: ${tenantId}]`, error.response?.data || error.message);
