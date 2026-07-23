@@ -1107,6 +1107,90 @@ app.delete('/api/appointments/:id', authenticateToken, async (req: AuthRequest, 
 });
 
 // -------------------------------------------------------------
+// CRM OPPORTUNITIES APIS (Protected by JWT)
+// -------------------------------------------------------------
+app.get('/api/control/:tenantId/opportunities', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { contact_id, conversation_id, stage } = req.query;
+    const list = await controlService.getOpportunities(
+      tenantId,
+      contact_id ? String(contact_id) : undefined,
+      conversation_id ? String(conversation_id) : undefined,
+      stage ? String(stage) : undefined
+    );
+    res.json(list);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/opportunities', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId } = req.params;
+    const opp = await controlService.createOpportunity(tenantId, req.body);
+    res.json(opp);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/control/:tenantId/opportunities/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    const opp = await controlService.updateOpportunity(tenantId, parseInt(id), req.body);
+    res.json(opp);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/control/:tenantId/opportunities/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    await controlService.deleteOpportunity(tenantId, parseInt(id));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/control/:tenantId/opportunities/:id/activities', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const activities = await controlService.getOpportunityActivities(tenantId, parseInt(id));
+    res.json(activities);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/opportunities/:id/activities', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    const activity = await controlService.addOpportunityActivity(tenantId, parseInt(id), {
+      ...req.body,
+      created_by: req.user?.email || 'Usuario'
+    });
+    res.json(activity);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// -------------------------------------------------------------
 // INITIAL SEED DATA & STARTUP
 // -------------------------------------------------------------
 async function seedDefaultAdmin() {

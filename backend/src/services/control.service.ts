@@ -317,6 +317,112 @@ export class ControlService {
 
     return response.data;
   }
+
+  // --- CRM OPPORTUNITIES ---
+  async getOpportunities(tenantId: string, contactId?: string, conversationId?: string, stage?: string) {
+    let queryText = `SELECT * FROM crm_opportunities WHERE tenant_id = $1`;
+    const params: any[] = [tenantId];
+
+    if (contactId) {
+      params.push(contactId);
+      queryText += ` AND (contact_id = $${params.length} OR contact_phone LIKE '%' || $${params.length} || '%')`;
+    }
+    if (conversationId) {
+      params.push(conversationId);
+      queryText += ` AND conversation_id = $${params.length}`;
+    }
+    if (stage) {
+      params.push(stage);
+      queryText += ` AND stage = $${params.length}`;
+    }
+
+    queryText += ` ORDER BY updated_at DESC`;
+    const res = await configService.query(queryText, params);
+    return res.rows;
+  }
+
+  async createOpportunity(tenantId: string, payload: any) {
+    const {
+      contact_id,
+      contact_name,
+      contact_phone,
+      conversation_id,
+      title,
+      value,
+      currency = 'USD',
+      stage = 'stage:prospecto',
+      probability = 50,
+      assigned_agent_name,
+      next_action_type,
+      next_action_date,
+      next_action_notes
+    } = payload;
+
+    const res = await configService.query(`
+      INSERT INTO crm_opportunities (
+        tenant_id, contact_id, contact_name, contact_phone, conversation_id,
+        title, value, currency, stage, probability, assigned_agent_name,
+        next_action_type, next_action_date, next_action_notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING *
+    `, [
+      tenantId, contact_id || 'general', contact_name || 'Cliente', contact_phone || '', conversation_id || null,
+      title || 'Nueva Oportunidad Comercial', value || 0.00, currency, stage, probability, assigned_agent_name || 'Vendedor',
+      next_action_type || null, next_action_date || null, next_action_notes || null
+    ]);
+
+    return res.rows[0];
+  }
+
+  async updateOpportunity(tenantId: string, id: number, payload: any) {
+    const fields: string[] = [];
+    const params: any[] = [id, tenantId];
+
+    const allowed = [
+      'title', 'value', 'currency', 'stage', 'probability',
+      'assigned_agent_name', 'lost_reason', 'lost_notes',
+      'next_action_type', 'next_action_date', 'next_action_notes'
+    ];
+
+    allowed.forEach(key => {
+      if (payload[key] !== undefined) {
+        params.push(payload[key]);
+        fields.push(`${key} = $${params.length}`);
+      }
+    });
+
+    if (fields.length === 0) return null;
+
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    const queryText = `UPDATE crm_opportunities SET ${fields.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`;
+    const res = await configService.query(queryText, params);
+    return res.rows[0];
+  }
+
+  async deleteOpportunity(tenantId: string, id: number) {
+    const res = await configService.query(`DELETE FROM crm_opportunities WHERE id = $1 AND tenant_id = $2 RETURNING *`, [id, tenantId]);
+    return res.rows[0];
+  }
+
+  async getOpportunityActivities(tenantId: string, opportunityId: number) {
+    const res = await configService.query(`
+      SELECT a.* FROM crm_opportunity_activities a
+      JOIN crm_opportunities o ON a.opportunity_id = o.id
+      WHERE o.id = $1 AND o.tenant_id = $2
+      ORDER BY a.created_at DESC
+    `, [opportunityId, tenantId]);
+    return res.rows;
+  }
+
+  async addOpportunityActivity(tenantId: string, opportunityId: number, payload: any) {
+    const { activity_type, description, scheduled_at, created_by } = payload;
+    const res = await configService.query(`
+      INSERT INTO crm_opportunity_activities (opportunity_id, activity_type, description, scheduled_at, created_by)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [opportunityId, activity_type, description || '', scheduled_at || null, created_by || 'Sistema']);
+    return res.rows[0];
+  }
 }
 
 export const controlService = new ControlService();

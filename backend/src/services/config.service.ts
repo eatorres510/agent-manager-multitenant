@@ -65,6 +65,14 @@ class ConfigService {
     this.pool = new Pool(connectionString ? { connectionString } : {});
   }
 
+  public getPool(): pg.Pool {
+    return this.pool;
+  }
+
+  public async query(text: string, params?: any[]) {
+    return this.pool.query(text, params);
+  }
+
   async init() {
     const client = await this.pool.connect();
     try {

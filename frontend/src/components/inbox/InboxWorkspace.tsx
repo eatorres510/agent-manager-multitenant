@@ -64,19 +64,23 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const [showNewConvModal, setShowNewConvModal] = useState(false);
   const [contactsList, setContactsList] = useState<any[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string>('');
+  const [clientOpportunities, setClientOpportunities] = useState<any[]>([]);
 
   // Toast / Alerts
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const selectedConvRef = useRef<ConversationItem | null>(null);
+  selectedConvRef.current = selectedConv;
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   // --- API CALLS ---
@@ -146,9 +150,17 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
         const data = await res.json();
         const convList: ConversationItem[] = Array.isArray(data) ? data : [];
         setConversations(convList);
-        if (convList.length > 0 && !selectedConv) {
-          setSelectedConv(convList[0]);
-          fetchMessages(convList[0].id.toString());
+
+        if (convList.length > 0) {
+          if (!selectedConvRef.current) {
+            setSelectedConv(convList[0]);
+            fetchMessages(convList[0].id.toString(), false);
+          } else {
+            const updatedSelected = convList.find(c => c.id === selectedConvRef.current?.id);
+            if (updatedSelected) {
+              setSelectedConv(updatedSelected);
+            }
+          }
         }
       }
     } catch (e) {
@@ -158,17 +170,54 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
     }
   };
 
-  const fetchMessages = async (convId: string) => {
-    setFetchingMsgs(true);
+  const fetchClientOpportunities = async (phoneOrName: string) => {
+    if (!phoneOrName) return;
     try {
+      const res = await fetch(`/api/control/${tenantId}/opportunities?contact_id=${encodeURIComponent(phoneOrName)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClientOpportunities(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error('Error fetching client opportunities:', e);
+    }
+  };
+
+  const fetchMessages = async (convId: string, isSilent = false) => {
+    if (!isSilent && messages.length === 0) {
+      setFetchingMsgs(true);
+    }
+    try {
+      if (!isSilent && selectedConvRef.current) {
+        fetchClientOpportunities(selectedConvRef.current.meta?.sender?.phone_number || selectedConvRef.current.meta?.sender?.name || '');
+      }
       const res = await fetch(`/api/control/${tenantId}/conversations/${convId}/messages`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
         const msgList: ChatMessage[] = Array.isArray(data) ? data : [];
-        setMessages(msgList);
-        setTimeout(scrollToBottom, 100);
+        
+        setMessages(prev => {
+          if (prev.length === msgList.length && prev.every((m, i) => m.id === msgList[i]?.id)) {
+            return prev;
+          }
+          return msgList;
+        });
+
+        if (!isSilent) {
+          setTimeout(() => scrollToBottom('auto'), 50);
+        } else {
+          const chatContainer = chatContainerRef.current;
+          if (chatContainer) {
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 150;
+            if (isNearBottom) {
+              setTimeout(() => scrollToBottom('auto'), 50);
+            }
+          }
+        }
       }
     } catch (e) {
       console.error('Error fetching messages:', e);
@@ -198,7 +247,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       if (!res.ok) throw new Error(data.error || 'Error enviando mensaje');
 
       setInputMessage('');
-      fetchMessages(selectedConv.id.toString());
+      fetchMessages(selectedConv.id.toString(), true);
       showToast(isPrivate ? 'Nota privada interna guardada' : 'Mensaje enviado a WhatsApp');
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -224,6 +273,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       setSelectedConv({ ...selectedConv, status: newStatus });
       showToast(`Estado actualizado a '${newStatus === 'open' ? 'Atención por Humano' : newStatus === 'pending' ? 'Atención por IA' : 'Resuelto'}'`);
       fetchConversations();
+      fetchMessages(selectedConv.id.toString(), true);
     } catch (err: any) {
       showToast(err.message, 'error');
     }
@@ -255,7 +305,12 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
   useEffect(() => {
     fetchConversations();
-    const interval = setInterval(fetchConversations, 8000);
+    const interval = setInterval(() => {
+      fetchConversations();
+      if (selectedConvRef.current) {
+        fetchMessages(selectedConvRef.current.id.toString(), true);
+      }
+    }, 4000);
     return () => clearInterval(interval);
   }, [tenantId, activeCategory]);
 
@@ -431,8 +486,11 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   <div
                     key={c.id}
                     onClick={() => {
-                      setSelectedConv(c);
-                      fetchMessages(c.id.toString());
+                      if (selectedConv?.id !== c.id) {
+                        setSelectedConv(c);
+                        setMessages([]);
+                        fetchMessages(c.id.toString(), false);
+                      }
                     }}
                     style={{
                       padding: '0.75rem',
@@ -563,7 +621,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
               </div>
 
               {/* Chat Stream Window */}
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', backgroundColor: '#fafafa' }}>
+              <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', backgroundColor: '#fafafa' }}>
                 
                 {/* Date Divider Pill */}
                 <div style={{ display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
@@ -572,7 +630,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   </span>
                 </div>
 
-                {fetchingMsgs ? (
+                {fetchingMsgs && messages.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading messages...</div>
                 ) : messages.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No messages recorded yet.</div>
@@ -872,6 +930,80 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   <option value="stage:ganado">6. Venta Ganada 🎉</option>
                   <option value="stage:perdido">7. Venta Perdida ❌</option>
                 </select>
+              </div>
+
+              {/* Client Opportunities Section */}
+              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0b2b4c' }}>
+                    💼 Oportunidades del Cliente:
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const title = prompt('Título de la Oportunidad Comercial:');
+                      if (!title) return;
+                      const valStr = prompt('Monto estimado en USD ($):', '1000');
+                      const val = parseFloat(valStr || '0') || 0;
+
+                      try {
+                        const res = await fetch(`/api/control/${tenantId}/opportunities`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                          },
+                          body: JSON.stringify({
+                            contact_name: selectedConv.meta?.sender?.name || 'Cliente',
+                            contact_phone: selectedConv.meta?.sender?.phone_number || '',
+                            conversation_id: selectedConv.id.toString(),
+                            title,
+                            value: val,
+                            currency: 'USD',
+                            stage: 'stage:prospecto',
+                            next_action_type: 'llamada',
+                            next_action_notes: 'Seguimiento inicial por WhatsApp'
+                          })
+                        });
+                        if (res.ok) {
+                          showToast('Oportunidad vinculada a este chat!');
+                          fetchClientOpportunities(selectedConv.meta?.sender?.phone_number || selectedConv.meta?.sender?.name || '');
+                        }
+                      } catch (e: any) {
+                        showToast(e.message, 'error');
+                      }
+                    }}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + Crear
+                  </button>
+                </div>
+
+                {clientOpportunities.length === 0 ? (
+                  <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Sin oportunidades activas registradas.</span>
+                ) : (
+                  clientOpportunities.map((opp: any) => (
+                    <div key={opp.id} style={{ padding: '0.5rem', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
+                      <div style={{ fontWeight: 700, color: '#0b2b4c' }}>{opp.title}</div>
+                      <div style={{ color: '#2563eb', fontWeight: 800, marginTop: '0.2rem' }}>
+                        ${Number(opp.value).toLocaleString('en-US', { minimumFractionDigits: 2 })} {opp.currency}
+                      </div>
+                      {opp.next_action_type && (
+                        <div style={{ fontSize: '0.68rem', color: '#0284c7', marginTop: '0.2rem' }}>
+                          📌 {opp.next_action_type}: {opp.next_action_notes || 'Pendiente'}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Labels list */}
