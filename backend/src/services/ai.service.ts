@@ -180,7 +180,7 @@ class AIService {
           const args = call.args as { query: string };
           const products = await configService.searchLocalProducts(tenantId, args.query);
           result = products && products.length > 0 
-            ? products.map(p => `- ID: ${p.id} | Nombre: ${p.name} | Marca: ${p.brand || 'No especificada'} | Categoría: ${p.category || 'No especificada'} | Precio: C$${p.price} + IVA | Stock: ${p.stock} | Enlace: ${p.url || 'No disponible'} | Descripción: ${p.description || ''}`).join('\n')
+            ? products.map(p => `- ID: ${p.id} | Nombre: ${p.name} | Marca: ${p.brand || 'No especificada'} | Categoría: ${p.category || 'No especificada'} | Precio: C$${p.price} + IVA | Stock: ${p.stock > 0 ? 'Disponible' : 'Agotado'} | Enlace: ${p.url || 'No disponible'} | Descripción: ${p.description || ''}`).join('\n')
             : 'No se encontraron productos coincidentes en el catálogo.';
           
           if (products && products.length > 0) {
@@ -390,70 +390,74 @@ class AIService {
       let shouldEscalate = false;
 
       if (toolCalls && toolCalls.length > 0) {
-        const call = toolCalls[0];
-        let result = '';
+        // Push assistant call to chat log
+        messages.push(choice.message);
 
-        console.log(`[DeepSeek Tool Call] AI invocó la función: ${call.function.name} con argumentos:`, call.function.arguments);
+        for (const call of toolCalls) {
+          let result = '';
+          console.log(`[DeepSeek Tool Call] AI invocó la función: ${call.function.name} con argumentos:`, call.function.arguments);
 
-        if (call.function.name === 'search_products') {
-          const args = JSON.parse(call.function.arguments) as { query: string };
-          const products = await configService.searchLocalProducts(tenantId, args.query);
-          result = products && products.length > 0 
-            ? products.map(p => `- ID: ${p.id} | Nombre: ${p.name} | Marca: ${p.brand || 'No especificada'} | Categoría: ${p.category || 'No especificada'} | Precio: C$${p.price} + IVA | Stock: ${p.stock} | Enlace: ${p.url || 'No disponible'} | Descripción: ${p.description || ''}`).join('\n')
-            : 'No se encontraron productos coincidentes en el catálogo.';
-          
-          if (products && products.length > 0) {
-            for (const p of products) {
-              await configService.logProductQuery(tenantId, p.id, p.name, conversationId).catch(err => {
-                console.error('[Analytics Error] Failed to log product query:', err);
-              });
-              if (p.stock === 0) {
-                await configService.logLostSale(tenantId, p.id, p.name, customerPhone || 'Cliente WhatsApp', conversationId).catch(err => {
-                  console.error('[Lost Sale Error] Failed to log lost sale:', err);
+          if (call.function.name === 'search_products') {
+            const args = JSON.parse(call.function.arguments) as { query: string };
+            const products = await configService.searchLocalProducts(tenantId, args.query);
+            result = products && products.length > 0 
+              ? products.map(p => `- ID: ${p.id} | Nombre: ${p.name} | Marca: ${p.brand || 'No especificada'} | Categoría: ${p.category || 'No especificada'} | Precio: C$${p.price} + IVA | Stock: ${p.stock > 0 ? 'Disponible' : 'Agotado'} | Enlace: ${p.url || 'No disponible'} | Descripción: ${p.description || ''}`).join('\n')
+              : 'No se encontraron productos coincidentes en el catálogo.';
+            
+            if (products && products.length > 0) {
+              for (const p of products) {
+                await configService.logProductQuery(tenantId, p.id, p.name, conversationId).catch(err => {
+                  console.error('[Analytics Error] Failed to log product query:', err);
                 });
+                if (p.stock === 0) {
+                  await configService.logLostSale(tenantId, p.id, p.name, customerPhone || 'Cliente WhatsApp', conversationId).catch(err => {
+                    console.error('[Lost Sale Error] Failed to log lost sale:', err);
+                  });
+                }
               }
             }
+          } else if (call.function.name === 'get_faq_info') {
+            const kb = await configService.getKnowledgeBase(tenantId);
+            result = `FAQs de la empresa:\n${kb.faqs}\n\nCuentas Bancarias y Métodos de Pago:\n${kb.bank_accounts}\n\nServicios Ofrecidos:\n${kb.services || 'No especificados'}`;
+          } else if (call.function.name === 'get_business_info') {
+            const kb = await configService.getKnowledgeBase(tenantId);
+            result = `Sucursales y Ubicación: ${kb.branches}\nHorario Lunes-Viernes: ${kb.mon_fri_start} a ${kb.mon_fri_end}\nHorario Sábados: ${kb.sat_start} a ${kb.sat_end}\nDomingos: ${kb.sun_enabled ? 'Abierto' : 'Cerrado'}\nZona Horaria: ${kb.timezone}`;
+          } else if (call.function.name === 'check_availability') {
+            const args = JSON.parse(call.function.arguments) as { date: string };
+            const slots = await configService.getAvailableSlots(tenantId, args.date);
+            result = slots.length > 0 
+              ? `Horarios disponibles para el ${args.date}: ${slots.join(', ')}`
+              : `No hay horarios disponibles para el ${args.date} o el negocio está cerrado ese día.`;
+          } else if (call.function.name === 'book_appointment') {
+            const args = JSON.parse(call.function.arguments) as { date: string, time: string, name: string, phone: string, service?: string };
+            try {
+              const appt = await configService.createAppointment(tenantId, args.name, args.phone, args.date, args.time, args.service);
+              result = `Cita de ${appt.service} reservada con éxito. ID Reserva: ${appt.id}. Detalle: ${appt.customer_name} el día ${appt.appointment_date} a las ${appt.appointment_time}.`;
+            } catch (err: any) {
+              result = `Error al registrar cita: El horario de las ${args.time} el día ${args.date} ya está ocupado. Por favor consulta la disponibilidad de nuevo y elige otra hora.`;
+            }
+          } else if (call.function.name === 'escalate_to_human') {
+            const args = JSON.parse(call.function.arguments) as { reason: string };
+            shouldEscalate = true;
+            result = JSON.stringify({ success: true, message: `Conversación programada para escalar a asesor humano. Razón: ${args.reason}` });
+            console.log(`[DeepSeek Escalation Tool Triggered] Razón dada por la IA: ${args.reason}`);
           }
-        } else if (call.function.name === 'get_faq_info') {
-          const kb = await configService.getKnowledgeBase(tenantId);
-          result = `FAQs de la empresa:\n${kb.faqs}\n\nCuentas Bancarias y Métodos de Pago:\n${kb.bank_accounts}\n\nServicios Ofrecidos:\n${kb.services || 'No especificados'}`;
-        } else if (call.function.name === 'get_business_info') {
-          const kb = await configService.getKnowledgeBase(tenantId);
-          result = `Sucursales y Ubicación: ${kb.branches}\nHorario Lunes-Viernes: ${kb.mon_fri_start} a ${kb.mon_fri_end}\nHorario Sábados: ${kb.sat_start} a ${kb.sat_end}\nDomingos: ${kb.sun_enabled ? 'Abierto' : 'Cerrado'}\nZona Horaria: ${kb.timezone}`;
-        } else if (call.function.name === 'check_availability') {
-          const args = JSON.parse(call.function.arguments) as { date: string };
-          const slots = await configService.getAvailableSlots(tenantId, args.date);
-          result = slots.length > 0 
-            ? `Horarios disponibles para el ${args.date}: ${slots.join(', ')}`
-            : `No hay horarios disponibles para el ${args.date} o el negocio está cerrado ese día.`;
-        } else if (call.function.name === 'book_appointment') {
-          const args = JSON.parse(call.function.arguments) as { date: string, time: string, name: string, phone: string, service?: string };
-          try {
-            const appt = await configService.createAppointment(tenantId, args.name, args.phone, args.date, args.time, args.service);
-            result = `Cita de ${appt.service} reservada con éxito. ID Reserva: ${appt.id}. Detalle: ${appt.customer_name} el día ${appt.appointment_date} a las ${appt.appointment_time}.`;
-          } catch (err: any) {
-            result = `Error al registrar cita: El horario de las ${args.time} el día ${args.date} ya está ocupado. Por favor consulta la disponibilidad de nuevo y elige otra hora.`;
-          }
-        } else if (call.function.name === 'escalate_to_human') {
-          const args = JSON.parse(call.function.arguments) as { reason: string };
-          shouldEscalate = true;
-          result = JSON.stringify({ success: true, message: `Conversación programada para escalar a asesor humano. Razón: ${args.reason}` });
-          console.log(`[DeepSeek Escalation Tool Triggered] Razón dada por la IA: ${args.reason}`);
-        }
 
-        // Push assistant call and tool output to chat log
-        messages.push(choice.message);
-        messages.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          content: result
-        });
+          // Push tool response for each tool call
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: result
+          });
+        }
 
         const finalResponse = await axios.post(
           'https://api.deepseek.com/v1/chat/completions',
           {
             model: 'deepseek-chat',
             messages,
+            tools,
+            tool_choice: 'none',
             temperature: 0.7,
             stream: false
           },

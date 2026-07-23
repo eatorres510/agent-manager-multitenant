@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { AnalyticsTab } from './components/reports/AnalyticsTab';
+import { ControlPlaneTab } from './components/admin/ControlPlaneTab';
+import { InboxWorkspace } from './components/inbox/InboxWorkspace';
+import { KanbanBoard } from './components/crm/KanbanBoard';
 
 interface AgentConfig {
   tenant_id: string;
@@ -66,7 +70,7 @@ interface ToastMessage {
   type: 'success' | 'error';
 }
 
-type TabType = 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs';
+type TabType = 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs' | 'control-plane' | 'inbox' | 'contacts' | 'kanban';
 
 function App() {
   // Auth state
@@ -79,6 +83,7 @@ function App() {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<TabType>('settings');
+  const [agentStatus, setAgentStatus] = useState<string>('online');
 
   // Users management state
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -91,6 +96,7 @@ function App() {
   // Login form state
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
 
@@ -184,16 +190,9 @@ function App() {
     last_active: string;
     message_count: number;
   }
-  interface ProductAnalytic {
-    product_id: string;
-    product_name: string;
-    query_count: number;
-    last_consulted: string;
-  }
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedConversationLogs, setSelectedConversationLogs] = useState<LogEntry[]>([]);
-  const [analytics, setAnalytics] = useState<ProductAnalytic[]>([]);
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -536,13 +535,9 @@ function App() {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await fetch('/api/analytics/products', {
+      await fetch('/api/analytics/products', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAnalytics(data);
-      }
     } catch (e) {
       console.error('Error fetching analytics:', e);
     }
@@ -747,7 +742,7 @@ function App() {
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100vh',
-        background: 'radial-gradient(circle at 50% 0%, #151d30 0%, #0B0F19 70%)',
+        background: 'var(--gradient-hero)',
         padding: '1.5rem',
         boxSizing: 'border-box'
       }}>
@@ -764,7 +759,7 @@ function App() {
               fontFamily: "'Outfit', sans-serif", 
               fontSize: '2.2rem', 
               margin: '0 0 0.5rem 0',
-              background: 'linear-gradient(135deg, #60a5fa 0%, #c084fc 100%)',
+              background: 'var(--gradient-primary)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               fontWeight: 700
@@ -806,14 +801,34 @@ function App() {
 
             <div className="form-group">
               <label htmlFor="password">Contraseña</label>
-              <input
-                type="password"
-                id="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{ width: '100%', paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.5rem',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.1rem',
+                    padding: '0.2rem',
+                    color: 'var(--text-muted)'
+                  }}
+                  title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
 
             <button type="submit" className="btn-primary" disabled={loggingIn} style={{ marginTop: '0.5rem' }}>
@@ -841,7 +856,7 @@ function App() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <p style={{ fontSize: '1.2rem', color: '#9ca3af' }}>Cargando datos de la empresa...</p>
+        <p style={{ fontSize: '1.2rem', color: '#93c5fd' }}>Cargando datos de la empresa...</p>
       </div>
     );
   }
@@ -860,8 +875,8 @@ function App() {
       {/* Left Sidebar */}
       <aside style={{
         width: '280px',
-        backgroundColor: '#00405c',
-        color: '#ffffff',
+        backgroundColor: '#0B2B4C',
+        color: '#0b2b4c',
         display: 'flex',
         flexDirection: 'column',
         padding: '1.5rem',
@@ -903,7 +918,7 @@ function App() {
                 <rect x="21" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
               </svg>
               <div>
-                <h1 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.2 }}>Agente IA</h1>
+                <h1 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#0b2b4c', letterSpacing: '-0.02em', lineHeight: 1.2 }}>Agente IA</h1>
                 <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Control Panel</span>
               </div>
             </div>
@@ -940,7 +955,46 @@ function App() {
             )}
           </div>
           <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.1rem' }}>Usuario</div>
-          <div style={{ fontSize: '0.75rem', color: '#e2e8f0', wordBreak: 'break-all', fontWeight: 500 }}>{userEmail}</div>
+          <div style={{ fontSize: '0.75rem', color: '#0b2b4c', wordBreak: 'break-all', fontWeight: 500, marginBottom: '0.5rem' }}>{userEmail}</div>
+
+          {/* Phase 4: Agent Status Selector (Pauses) */}
+          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.2rem' }}>Estado del Agente</div>
+          <select
+            value={agentStatus}
+            onChange={async (e) => {
+              const newStatus = e.target.value;
+              setAgentStatus(newStatus);
+              try {
+                await fetch('/api/agent-status', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ status: newStatus })
+                });
+              } catch (err) {
+                console.error('Error updating status:', err);
+              }
+            }}
+            style={{
+              width: '100%',
+              padding: '0.35rem 0.5rem',
+              borderRadius: '6px',
+              backgroundColor: '#071D34',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: agentStatus === 'online' ? '#34d399' : agentStatus === 'busy' ? '#f87171' : '#fbbf24',
+              fontSize: '0.75rem',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="online">🟢 Disponible</option>
+            <option value="busy">🔴 Ocupado / En Llamada</option>
+            <option value="lunch">🍕 En Almuerzo</option>
+            <option value="training">📚 En Capacitación</option>
+            <option value="break">☕ En Pausa Corta</option>
+          </select>
         </div>
 
         {/* Sidebar Nav Links */}
@@ -1086,7 +1140,7 @@ function App() {
               transition: 'all 0.2s'
             }}
           >
-            Estadísticas
+            Reportes e Informes Ejecutivos
           </button>
 
           <button
@@ -1210,6 +1264,102 @@ function App() {
             Portal de API & Docs
           </button>
 
+          <button
+            onClick={() => {
+              setActiveTab('control-plane');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              background: activeTab === 'control-plane' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'control-plane' ? '3px solid #3b82f6' : '3px solid transparent',
+              color: activeTab === 'control-plane' ? '#60a5fa' : '#9ca3af',
+              padding: '0.75rem 1rem',
+              borderRadius: '0 8px 8px 0',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s'
+            }}
+          >
+            Control Plane (Canales/Meta)
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('inbox');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              background: activeTab === 'inbox' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'inbox' ? '3px solid #10b981' : '3px solid transparent',
+              color: activeTab === 'inbox' ? '#34d399' : '#9ca3af',
+              padding: '0.75rem 1rem',
+              borderRadius: '0 8px 8px 0',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s'
+            }}
+          >
+            Bandeja En Vivo (Chats)
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('contacts');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              background: activeTab === 'contacts' ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'contacts' ? '3px solid #3b82f6' : '3px solid transparent',
+              color: activeTab === 'contacts' ? '#60a5fa' : '#9ca3af',
+              padding: '0.75rem 1rem',
+              borderRadius: '0 8px 8px 0',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s'
+            }}
+          >
+            Directorio de Contactos (Leads)
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('kanban');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              background: activeTab === 'kanban' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'kanban' ? '3px solid #f59e0b' : '3px solid transparent',
+              color: activeTab === 'kanban' ? '#fbbf24' : '#9ca3af',
+              padding: '0.75rem 1rem',
+              borderRadius: '0 8px 8px 0',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s'
+            }}
+          >
+            📌 Pipeline CRM (Kanban)
+          </button>
+
           {role === 'superadmin' && (
             <button
               onClick={() => {
@@ -1274,7 +1424,7 @@ function App() {
       <div style={{ marginLeft: '280px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', boxSizing: 'border-box' }}>
         {/* Top Header bar */}
         <header style={{
-          background: 'var(--bg-card)',
+          background: '#ffffff',
           borderBottom: '1px solid var(--border-color)',
           padding: '1.25rem 2rem',
           display: 'flex',
@@ -1597,7 +1747,7 @@ function App() {
                       style={{
                         width: '100%',
                         padding: '0.75rem',
-                        backgroundColor: '#1f2937',
+                        backgroundColor: '#071D34',
                         border: '1px solid var(--border-color)',
                         borderRadius: '8px',
                         color: '#fff',
@@ -2137,7 +2287,7 @@ function App() {
                   alignItems: 'center',
                   gap: '1rem',
                   padding: '1rem',
-                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  backgroundColor: '#f8fafc',
                   border: '1px solid var(--border-color)',
                   borderRadius: '12px',
                   marginBottom: '2rem'
@@ -2151,9 +2301,9 @@ function App() {
                     style={{
                       padding: '0.5rem 1rem',
                       borderRadius: '8px',
-                      backgroundColor: '#1f2937',
+                      backgroundColor: '#071D34',
                       border: '1px solid var(--border-color)',
-                      color: '#ffffff',
+                      color: '#0b2b4c',
                       fontSize: '0.9rem',
                       fontFamily: 'inherit'
                     }}
@@ -2185,7 +2335,7 @@ function App() {
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#ffffff' }}>{slot} hs</span>
+                          <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#0b2b4c' }}>{slot} hs</span>
                           <span style={{
                             fontSize: '0.75rem',
                             padding: '0.2rem 0.5rem',
@@ -2526,12 +2676,12 @@ function App() {
                   <code style={{ 
                     flex: 1,
                     padding: '0.5rem 0.75rem', 
-                    backgroundColor: '#1f2937', 
+                    backgroundColor: '#071D34', 
                     borderRadius: '6px', 
                     fontSize: '0.8rem', 
                     fontFamily: 'monospace',
                     wordBreak: 'break-all',
-                    color: '#e2e8f0',
+                    color: '#0b2b4c',
                     border: '1px solid var(--border-color)'
                   }}>
                     {token ? `${token.slice(0, 50)}...` : 'Token no disponible'}
@@ -2563,14 +2713,14 @@ function App() {
                     <span style={{ 
                       padding: '0.25rem 0.75rem', 
                       backgroundColor: '#10b981', 
-                      color: '#ffffff', 
+                      color: '#0b2b4c', 
                       borderRadius: '6px', 
                       fontWeight: 'bold', 
                       fontSize: '0.85rem' 
                     }}>
                       POST
                     </span>
-                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#e2e8f0' }}>/api/products/sync</strong>
+                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#0b2b4c' }}>/api/products/sync</strong>
                   </div>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '1rem', lineHeight: 1.5 }}>
                     Sincroniza y actualiza los productos de tu ERP. Admite dos modos de ejecución a través del query parameter <code style={{ color: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>mode</code>:
@@ -2584,7 +2734,7 @@ function App() {
                   <h5 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Ejemplo de petición cURL:</h5>
                   <pre style={{ 
                     padding: '1rem', 
-                    backgroundColor: '#1f2937', 
+                    backgroundColor: '#071D34', 
                     borderRadius: '8px', 
                     color: '#34d399', 
                     overflowX: 'auto', 
@@ -2617,14 +2767,14 @@ function App() {
                     <span style={{ 
                       padding: '0.25rem 0.75rem', 
                       backgroundColor: '#3b82f6', 
-                      color: '#ffffff', 
+                      color: '#0b2b4c', 
                       borderRadius: '6px', 
                       fontWeight: 'bold', 
                       fontSize: '0.85rem' 
                     }}>
                       GET
                     </span>
-                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#e2e8f0' }}>/api/products</strong>
+                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#0b2b4c' }}>/api/products</strong>
                   </div>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '1rem', lineHeight: 1.5 }}>
                     Obtiene el catálogo completo de productos sincronizados de tu empresa (retorna hasta un límite de 10,000 registros).
@@ -2633,7 +2783,7 @@ function App() {
                   <h5 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Ejemplo de petición cURL:</h5>
                   <pre style={{ 
                     padding: '1rem', 
-                    backgroundColor: '#1f2937', 
+                    backgroundColor: '#071D34', 
                     borderRadius: '8px', 
                     color: '#60a5fa', 
                     overflowX: 'auto', 
@@ -2653,14 +2803,14 @@ function App() {
                     <span style={{ 
                       padding: '0.25rem 0.75rem', 
                       backgroundColor: '#10b981', 
-                      color: '#ffffff', 
+                      color: '#0b2b4c', 
                       borderRadius: '6px', 
                       fontWeight: 'bold', 
                       fontSize: '0.85rem' 
                     }}>
                       POST
                     </span>
-                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#e2e8f0' }}>/api/appointments</strong>
+                    <strong style={{ fontFamily: 'monospace', fontSize: '1.1rem', color: '#0b2b4c' }}>/api/appointments</strong>
                   </div>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '1rem', lineHeight: 1.5 }}>
                     Permite agendar citas de forma externa en el sistema de calendario de tu inquilino (ej. integraciones con otros calendarios o CRMs).
@@ -2669,7 +2819,7 @@ function App() {
                   <h5 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Ejemplo de petición cURL:</h5>
                   <pre style={{ 
                     padding: '1rem', 
-                    backgroundColor: '#1f2937', 
+                    backgroundColor: '#071D34', 
                     borderRadius: '8px', 
                     color: '#34d399', 
                     overflowX: 'auto', 
@@ -2693,6 +2843,121 @@ function App() {
 
               </div>
             </div>
+          )}
+
+          {activeTab === 'control-plane' && (
+            <ControlPlaneTab tenantId={tenantId || 'demo'} token={token} role={role} />
+          )}
+
+          {activeTab === 'inbox' && (
+            <InboxWorkspace tenantId={tenantId || 'demo'} token={token} role={role} />
+          )}
+
+          {activeTab === 'contacts' && (
+            <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div>
+                  <h2 className="card-title" style={{ color: '#60a5fa', margin: 0 }}>
+                    👥 Directorio de Contactos y Leads (WhatsApp)
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>
+                    Listado de todos los prospectos y clientes registrados en tu cuenta de Chatwoot.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('inbox')}
+                  className="btn-primary"
+                  style={{ backgroundColor: '#2563eb' }}
+                >
+                  💬 Ir a Bandeja En Vivo
+                </button>
+              </div>
+
+              <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', color: '#0b2b4c' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#93c5fd', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+                      <th style={{ padding: '0.75rem' }}>Nombre del Contacto</th>
+                      <th style={{ padding: '0.75rem' }}>Teléfono WhatsApp</th>
+                      <th style={{ padding: '0.75rem' }}>Correo Electrónico</th>
+                      <th style={{ padding: '0.75rem' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#0b2b4c' }}>👤 icy-bird-506</td>
+                      <td style={{ padding: '0.75rem', color: '#60a5fa' }}>📱 +505 8888 5707</td>
+                      <td style={{ padding: '0.75rem', color: '#93c5fd' }}>cliente506@sicsa.com.ni</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <button
+                          onClick={() => setActiveTab('inbox')}
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: '#2563eb',
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          💬 Iniciar Chat
+                        </button>
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#0b2b4c' }}>👤 twilight-rain-593</td>
+                      <td style={{ padding: '0.75rem', color: '#60a5fa' }}>📱 +505 8777 4432</td>
+                      <td style={{ padding: '0.75rem', color: '#93c5fd' }}>twilight@sicsa.com.ni</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <button
+                          onClick={() => setActiveTab('inbox')}
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: '#2563eb',
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          💬 Iniciar Chat
+                        </button>
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#0b2b4c' }}>👤 Sofia (AI Agent) Lead</td>
+                      <td style={{ padding: '0.75rem', color: '#60a5fa' }}>📱 +505 8999 1122</td>
+                      <td style={{ padding: '0.75rem', color: '#93c5fd' }}>lead@sicsa.com.ni</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <button
+                          onClick={() => setActiveTab('inbox')}
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: '#2563eb',
+                            color: '#fff',
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          💬 Iniciar Chat
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'kanban' && (
+            <KanbanBoard tenantId={tenantId || 'demo'} token={token} role={role} onOpenChat={() => setActiveTab('inbox')} />
           )}
 
           {activeTab === 'admin' && role === 'superadmin' && (
@@ -2798,7 +3063,7 @@ function App() {
                             <tr key={idx} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
                               <td style={{ padding: '0.75rem', fontFamily: 'monospace', color: '#f87171', fontWeight: 'bold' }}>{t.tenant_id}</td>
                               <td style={{ padding: '0.75rem', fontWeight: 600 }}>{t.tenant_name}</td>
-                              <td style={{ padding: '0.75rem', color: '#9ca3af' }}>{t.email || '(Sin usuario)'}</td>
+                              <td style={{ padding: '0.75rem', color: '#93c5fd' }}>{t.email || '(Sin usuario)'}</td>
                               <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'}</td>
                             </tr>
                           ))}
@@ -2890,54 +3155,7 @@ function App() {
           )}
 
           {activeTab === 'analytics' && (
-            <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-              <h2 className="card-title">
-                📊 Estadísticas de Búsqueda de Productos
-              </h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.4 }}>
-                Mira en tiempo real qué productos y laptops del catálogo de SICSA están consultando tus clientes.
-              </p>
-
-              <div>
-                <h3 className="card-title" style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>🔥 Top 10 Laptops / Productos más Consultados</h3>
-                {analytics.length === 0 ? (
-                  <div style={{
-                    padding: '3rem 1rem',
-                    border: '1px dashed var(--border-color)',
-                    borderRadius: '12px',
-                    textAlign: 'center',
-                    color: 'var(--text-muted)'
-                  }}>
-                    Aún no hay búsquedas de productos registradas. Las consultas de tus clientes aparecerán aquí automáticamente.
-                  </div>
-                ) : (
-                  <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: 'rgba(11, 43, 76, 0.03)', borderBottom: '1px solid var(--border-color)' }}>
-                          <th style={{ padding: '0.75rem' }}>ID/SKU del Producto</th>
-                          <th style={{ padding: '0.75rem' }}>Nombre del Producto</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'center' }}>Nº de Consultas</th>
-                          <th style={{ padding: '0.75rem' }}>Última vez consultado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analytics.map((a, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid rgba(11, 43, 76, 0.02)' }}>
-                            <td style={{ padding: '0.75rem', fontFamily: 'monospace', color: '#2563eb', fontWeight: 'bold' }}>{a.product_id}</td>
-                            <td style={{ padding: '0.75rem', fontWeight: 600 }}>{a.product_name}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', color: '#10b981', fontSize: '1rem' }}>
-                              {a.query_count}
-                            </td>
-                            <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{new Date(a.last_consulted).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
+            <AnalyticsTab tenantId={tenantId || 'demo'} token={token} role={role} />
           )}
 
           {activeTab === 'activity' && (

@@ -208,6 +208,18 @@ class ConfigService {
         )
       `);
 
+      // 10. Agent status logs table (for breaks/availabilities)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS agent_status_logs (
+          id SERIAL PRIMARY KEY,
+          tenant_id VARCHAR(50) REFERENCES tenants(id) ON DELETE CASCADE,
+          user_email VARCHAR(255) NOT NULL,
+          status VARCHAR(50) NOT NULL,
+          started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          ended_at TIMESTAMP NULL
+        )
+      `);
+
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');
@@ -401,8 +413,8 @@ class ConfigService {
 
   async searchLocalProducts(tenantId: string, query: string, limit: number = 3): Promise<Product[]> {
     await this.init();
-    // Split query into words to do a multi-word search
-    const words = query.split(/\s+/).filter(w => w.length > 2);
+    // Split query into words to do a multi-word search (keep words of 2 or more characters like HP, LG)
+    const words = query.split(/\s+/).filter(w => w.length >= 2);
     let sql = 'SELECT * FROM products WHERE tenant_id = $1';
     const params: any[] = [tenantId];
     
@@ -413,7 +425,7 @@ class ConfigService {
         const pNum = idx + 2;
         return `(name ILIKE $${pNum} OR description ILIKE $${pNum} OR category ILIKE $${pNum} OR brand ILIKE $${pNum})`;
       });
-      sql += clauses.join(' OR ');
+      sql += clauses.join(' AND ');
       sql += ')';
     } else {
       // Fallback search
@@ -421,7 +433,27 @@ class ConfigService {
       sql += ' AND (name ILIKE $2 OR description ILIKE $2 OR category ILIKE $2 OR brand ILIKE $2)';
     }
 
-    sql += ' ORDER BY stock DESC, name ASC LIMIT $' + (params.length + 1);
+    let orderBy = ' ORDER BY ';
+    if (words.length > 0) {
+      const matchScore = words.map((w, idx) => {
+        const pNum = idx + 2;
+        return `
+          (CASE 
+            WHEN category ILIKE $${pNum} AND category NOT ILIKE '%repuesto%' AND category NOT ILIKE '%servicio%' AND category NOT ILIKE '%accesorio%' THEN 10
+            WHEN name ILIKE $${pNum} AND category NOT ILIKE '%repuesto%' AND category NOT ILIKE '%servicio%' AND category NOT ILIKE '%accesorio%' THEN 5
+            WHEN category ILIKE $${pNum} THEN 2
+            WHEN name ILIKE $${pNum} THEN 1
+            ELSE 0 
+          END)
+        `;
+      }).join(' + ');
+      orderBy += `(${matchScore}) DESC, `;
+    } else {
+      orderBy += `(CASE WHEN category ILIKE '%repuesto%' OR category ILIKE '%servicio%' OR category ILIKE '%accesorio%' THEN 0 ELSE 1 END) DESC, `;
+    }
+    orderBy += 'stock DESC, name ASC';
+
+    sql += orderBy + ' LIMIT $' + (params.length + 1);
     params.push(limit);
 
     const res = await this.pool.query(sql, params);
@@ -562,6 +594,30 @@ class ConfigService {
       `DELETE FROM lost_sales WHERE tenant_id = $1 AND id = $2`,
       [tenantId, id]
     );
+  }
+
+  // --- AGENT STATUS & PAUSES TRACKING ---
+  async setAgentStatus(tenantId: string, userEmail: string, status: string): Promise<void> {
+    await this.init();
+    // Close active status for user
+    await this.pool.query(
+      `UPDATE agent_status_logs SET ended_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND user_email = $2 AND ended_at IS NULL`,
+      [tenantId, userEmail]
+    );
+    // Insert new status log
+    await this.pool.query(
+      `INSERT INTO agent_status_logs (tenant_id, user_email, status, started_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+      [tenantId, userEmail, status]
+    );
+  }
+
+  async getAgentStatusSummary(tenantId: string): Promise<any[]> {
+    await this.init();
+    const res = await this.pool.query(
+      `SELECT user_email, status, started_at FROM agent_status_logs WHERE tenant_id = $1 AND ended_at IS NULL ORDER BY started_at DESC`,
+      [tenantId]
+    );
+    return res.rows;
   }
 }
 

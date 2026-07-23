@@ -9,6 +9,7 @@ import bcrypt from 'bcrypt';
 import { configService, AgentConfig, KnowledgeBase } from './services/config.service.js';
 import { redisService } from './services/redis.service.js';
 import { aiService, ChatMessage } from './services/ai.service.js';
+import { controlService } from './services/control.service.js';
 
 dotenv.config();
 
@@ -72,10 +73,15 @@ function isWithinWorkingHours(kb: KnowledgeBase): { isOpen: boolean; currentTime
     const now = new Date();
     
     // Format to timezone components
-    const formatter = new Intl.DateTimeFormat('en-US', {
+    const formatter = new Intl.DateTimeFormat('es-NI', {
       timeZone: timezone,
-      hour: '2-digit', minute: '2-digit', hour12: false,
-      weekday: 'short'
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
     });
     
     const timeStr = formatter.format(now); // e.g. "Mon, 22:30"
@@ -254,8 +260,8 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
         payload.message_type === 'incoming' &&
         payload.content
       ) {
-        if (status === 'open' || assigneeId) {
-          console.log(`[Webhook Ignore] Conversación ${conversationId} tiene estado '${status}' o asignado ${assigneeId}. Ignorando bot.`);
+        if (status === 'open' && assigneeId) {
+          console.log(`[Webhook Ignore] Conversación ${conversationId} tiene estado 'open' y está asignada al agente ${assigneeId}. Ignorando bot.`);
           return res.status(200).json({ status: 'ignored_by_bot' });
         }
 
@@ -329,8 +335,7 @@ async function handleIncomingMessage(tenantId: string, conversationId: number, a
   // 2. Fetch recent conversation history from logs to provide context to LLM
   const dbLogs = await configService.getConversationLogs(tenantId, conversationId.toString());
   const history: ChatMessage[] = dbLogs
-    .slice(0, 10)
-    .reverse()
+    .slice(-10)
     .map(log => ({
       role: log.role === 'user' ? 'user' : 'assistant',
       content: log.content
@@ -500,6 +505,223 @@ app.get('/api/auth/me', authenticateToken, async (req: AuthRequest, res) => {
       tenant_id: user.tenant_id,
       role: user.role
     });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- PHASE 2: CONTROL PLANE & CHANNELS & META TEMPLATES APIS ---
+
+// Get all labels for tenant
+app.get('/api/control/:tenantId/labels', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const labels = await controlService.getLabels(tenantId);
+    res.json(labels);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create new label in Chatwoot
+app.post('/api/control/:tenantId/labels', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const tenantId = req.params.tenantId;
+    const label = await controlService.createLabel(tenantId, req.body);
+    res.json({ success: true, label });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete label
+app.delete('/api/control/:tenantId/labels/:title', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, title } = req.params;
+    await controlService.deleteLabel(tenantId, title);
+    res.json({ success: true, message: `Etiqueta '${title}' eliminada.` });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get inboxes/channels
+app.get('/api/control/:tenantId/inboxes', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const inboxes = await controlService.getInboxes(tenantId);
+    res.json(inboxes);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create new inbox/channel
+app.post('/api/control/:tenantId/inboxes', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const tenantId = req.params.tenantId;
+    const inbox = await controlService.createInbox(tenantId, req.body);
+    res.json({ success: true, inbox });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get Meta WhatsApp templates
+app.get('/api/control/:tenantId/meta-templates', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const data = await controlService.getMetaTemplates(tenantId);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Send Meta WhatsApp template
+app.post('/api/control/:tenantId/meta-templates/send', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const tenantId = req.params.tenantId;
+    const { conversation_id, template_name, params } = req.body;
+    const result = await controlService.sendMetaTemplate(tenantId, conversation_id, template_name, params || []);
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- PHASE 3: LIVE CONVERSATIONS & CUSTOM INBOX APIS ---
+
+// List live conversations for tenant
+app.get('/api/control/:tenantId/conversations', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const status = (req.query.status as string) || 'all';
+    const page = parseInt((req.query.page as string) || '1');
+    const conversations = await controlService.getConversations(tenantId, status, page);
+    res.json(conversations);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get messages for a specific conversation
+app.get('/api/control/:tenantId/conversations/:id/messages', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const messages = await controlService.getConversationMessages(tenantId, id);
+    res.json(messages);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Send outgoing response or private note
+app.post('/api/control/:tenantId/conversations/:id/messages', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const { content, is_private } = req.body;
+    if (!content) return res.status(400).json({ error: 'El contenido del mensaje es requerido.' });
+    
+    const message = await controlService.sendMessage(tenantId, id, content, !!is_private);
+    res.json({ success: true, message });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Toggle conversation status (open/pending/resolved/snoozed)
+app.post('/api/control/:tenantId/conversations/:id/toggle_status', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const { status } = req.body;
+    const result = await controlService.toggleStatus(tenantId, id, status);
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update conversation CRM stage label
+app.post('/api/control/:tenantId/conversations/:id/labels', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const { labels } = req.body;
+    const result = await controlService.toggleLabel(tenantId, id, labels || []);
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reassign conversation to another agent or team
+app.post('/api/control/:tenantId/conversations/:id/assign', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const { assignee_id, team_id } = req.body;
+    const result = await controlService.assignConversation(tenantId, id, assignee_id ?? null, team_id ?? null);
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get contacts list for directory
+app.get('/api/control/:tenantId/contacts', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const page = parseInt(req.query.page as string || '1');
+    const result = await controlService.getContacts(tenantId, page);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create new conversation
+app.post('/api/control/:tenantId/conversations/create', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId } = req.params;
+    const { contact_id, inbox_id, message } = req.body;
+    const result = await controlService.createConversation(tenantId, contact_id, inbox_id, message);
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- PHASE 4: AGENT PAUSES & AVAILABILITY STATUSES ---
+
+// Update current agent status (online/busy/lunch/training/break)
+app.post('/api/agent-status', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userEmail = req.user!.email;
+    const tenantId = req.user!.tenant_id;
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'Estado no especificado.' });
+
+    await configService.setAgentStatus(tenantId, userEmail, status);
+    res.json({ success: true, status, user_email: userEmail });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get agent status summary for tenant
+app.get('/api/agent-status/summary', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenant_id;
+    const summary = await configService.getAgentStatusSummary(tenantId);
+    res.json(summary);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
