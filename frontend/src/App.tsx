@@ -3,6 +3,10 @@ import { AnalyticsTab } from './components/reports/AnalyticsTab';
 import { ControlPlaneTab } from './components/admin/ControlPlaneTab';
 import { InboxWorkspace } from './components/inbox/InboxWorkspace';
 import { KanbanBoard } from './components/crm/KanbanBoard';
+import { TeamManagementTab } from './components/admin/TeamManagementTab';
+import { OnboardingWizard } from './components/admin/OnboardingWizard';
+import { ContactsDirectoryTab } from './components/crm/ContactsDirectoryTab';
+import { AdvisorHomeTab } from './components/home/AdvisorHomeTab';
 
 interface AgentConfig {
   tenant_id: string;
@@ -70,7 +74,7 @@ interface ToastMessage {
   type: 'success' | 'error';
 }
 
-type TabType = 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs' | 'control-plane' | 'inbox' | 'contacts' | 'kanban';
+type TabType = 'home' | 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs' | 'control-plane' | 'inbox' | 'contacts' | 'kanban' | 'teams';
 
 function App() {
   // Auth state
@@ -81,9 +85,75 @@ function App() {
     localStorage.getItem('role') as any
   );
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<TabType>('settings');
+  // Active Tab (Default to Advisor Home)
+  const [activeTab, setActiveTab] = useState<TabType>('home');
   const [agentStatus, setAgentStatus] = useState<string>('online');
+
+  // Auto-Idle Detection State & Refs
+  const [autoIdleMinutes, setAutoIdleMinutes] = useState<number>(10);
+  const lastActivityRef = React.useRef<number>(Date.now());
+  const isAutoIdledRef = React.useRef<boolean>(false);
+
+  // Auto-Idle Inactivity Listener & Automatic Restore
+  useEffect(() => {
+    if (!token) return;
+
+    const handleUserActivity = () => {
+      lastActivityRef.current = Date.now();
+
+      if (isAutoIdledRef.current) {
+        isAutoIdledRef.current = false;
+        setAgentStatus('online');
+        fetch('/api/agent-status', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ status: 'online' })
+        }).catch(err => console.error('Error restoring status:', err));
+
+        showToast('¡Bienvenido de vuelta! Tu estado se restauró automáticamente a Disponible.');
+      }
+    };
+
+    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('keydown', handleUserActivity);
+    window.addEventListener('mousedown', handleUserActivity);
+    window.addEventListener('scroll', handleUserActivity);
+    window.addEventListener('touchstart', handleUserActivity);
+
+    const interval = setInterval(() => {
+      if (autoIdleMinutes <= 0 || agentStatus !== 'online') return;
+
+      const idleTimeMs = Date.now() - lastActivityRef.current;
+      const thresholdMs = autoIdleMinutes * 60 * 1000;
+
+      if (idleTimeMs >= thresholdMs && !isAutoIdledRef.current) {
+        isAutoIdledRef.current = true;
+        setAgentStatus('idle');
+        fetch('/api/agent-status', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ status: 'idle' })
+        }).catch(err => console.error('Error setting auto-idle status:', err));
+
+        showToast(`Inactividad detectada (${autoIdleMinutes} mins sin actividad). Estado cambiado a Inactivo / Ausente.`, 'error');
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('mousedown', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      clearInterval(interval);
+    };
+  }, [token, agentStatus, autoIdleMinutes]);
 
   // Users management state
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -178,6 +248,66 @@ function App() {
   const [manualService, setManualService] = useState('Servicio Técnico');
   const [bookingManual, setBookingManual] = useState(false);
   const [newTenantId, setNewTenantId] = useState('');
+
+  // Change Password Modal State
+  const [showChangePassModal, setShowChangePassModal] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [changingPass, setChangingPass] = useState(false);
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPasswordInput || !newPasswordInput) return;
+    if (newPasswordInput !== confirmPasswordInput) {
+      showToast('La nueva contraseña y la confirmación no coinciden.', 'error');
+      return;
+    }
+    if (newPasswordInput.length < 6) {
+      showToast('La nueva contraseña debe tener al menos 6 caracteres.', 'error');
+      return;
+    }
+
+    setChangingPass(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          current_password: currentPasswordInput,
+          new_password: newPasswordInput
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error cambiando contraseña');
+
+      showToast('¡Contraseña actualizada con éxito!');
+      setShowChangePassModal(false);
+      setCurrentPasswordInput('');
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setChangingPass(false);
+    }
+  };
+
+  // Sidebar navigation collapsible groups state
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({
+    operations: false,
+    ai: false,
+    analytics: false,
+    system: false
+  });
+
+  const toggleGroup = (groupKey: string) => {
+    setCollapsedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
   const [newTenantName, setNewTenantName] = useState('');
   const [newTenantEmail, setNewTenantEmail] = useState('');
   const [newTenantPassword, setNewTenantPassword] = useState('');
@@ -195,9 +325,50 @@ function App() {
   const [selectedConversationLogs, setSelectedConversationLogs] = useState<LogEntry[]>([]);
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logSearchQuery, setLogSearchQuery] = useState('');
+  const [isAutoPolling, setIsAutoPolling] = useState(true);
+  const [logLimit, setLogLimit] = useState<number>(30);
+  const [teamsList, setTeamsList] = useState<any[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  const handleOnboardingComplete = async (updatedConfig: any, updatedKb: string) => {
+    try {
+      // 1. Save Config
+      const configRes = await fetch('/api/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updatedConfig)
+      });
+
+      if (!configRes.ok) throw new Error('Error guardando configuración del agente');
+      const savedConfigData = await configRes.json();
+
+      // 2. Save Knowledge Base
+      const kbRes = await fetch('/api/knowledge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: updatedKb })
+      });
+
+      if (!kbRes.ok) throw new Error('Error guardando la base de conocimiento');
+
+      setConfig(savedConfigData);
+      setKb(prev => ({ ...prev, faqs: updatedKb }));
+      setShowOnboarding(false);
+      showToast('¡Onboarding completado con éxito! Tu Agente IA está listo para operar 24/7.');
+    } catch (e: any) {
+      showToast(e.message || 'Error durante el onboarding', 'error');
+    }
+  };
 
   const fetchUserProfile = async () => {
     try {
@@ -218,6 +389,21 @@ function App() {
     }
   };
 
+  const fetchTeamsList = async () => {
+    try {
+      const currentTenant = tenantId || 'sicsa';
+      const res = await fetch(`/api/control/${currentTenant}/teams`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTeamsList(data || []);
+      }
+    } catch (e) {
+      console.error('Error fetching teams:', e);
+    }
+  };
+
   // Fetch configs, logs, products, and KB when token is available
   useEffect(() => {
     if (token) {
@@ -229,15 +415,22 @@ function App() {
       fetchUsers();
       fetchAppointments();
       fetchLostSales();
+      fetchTeamsList();
       if (role === 'superadmin') {
         fetchTenants();
       }
-      const interval = setInterval(fetchLogs, 5000);
-      return () => clearInterval(interval);
     } else {
       setLoading(false);
     }
-  }, [token, role]);
+  }, [token, role, tenantId]);
+
+  // High-performance polling for Bitácora en Vivo (only active on activity tab)
+  useEffect(() => {
+    if (token && isAutoPolling && activeTab === 'activity') {
+      const interval = setInterval(() => fetchLogs(), 5000);
+      return () => clearInterval(interval);
+    }
+  }, [token, isAutoPolling, activeTab, logLimit]);
 
   // Load Chatwoot Web Widget dynamically if token is configured
   useEffect(() => {
@@ -377,14 +570,15 @@ function App() {
     }
   };
 
-  const fetchLogs = async () => {
+  const fetchLogs = async (overrideLimit?: number) => {
     try {
-      const res = await fetch('/api/logs', {
+      const targetLimit = overrideLimit || logLimit || 30;
+      const res = await fetch(`/api/logs?limit=${targetLimit}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setLogs(data);
+        setLogs(data || []);
       }
     } catch (e) {
       console.error('Error fetching logs:', e);
@@ -872,32 +1066,39 @@ function App() {
         </div>
       )}
 
-      {/* Left Sidebar */}
+      {/* Sidebar Navigation */}
       <aside style={{
         width: '280px',
-        backgroundColor: '#0B2B4C',
-        color: '#0b2b4c',
+        backgroundColor: '#07162c',
+        color: '#f8fafc',
         display: 'flex',
         flexDirection: 'column',
-        padding: '1.5rem',
-        borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+        padding: '1.25rem 1rem',
+        borderRight: '1px solid rgba(255, 255, 255, 0.08)',
         position: 'fixed',
         height: '100vh',
         left: 0,
         top: 0,
         zIndex: 100,
-        boxShadow: '4px 0 25px rgba(0,0,0,0.15)',
+        boxShadow: '6px 0 30px rgba(0,0,0,0.3)',
         boxSizing: 'border-box'
       }}>
-        {/* Sidebar Title */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* Sidebar Header & Branding */}
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '0.4rem', 
+          marginBottom: '1.25rem', 
+          paddingBottom: '0.85rem', 
+          borderBottom: '1px solid rgba(255,255,255,0.08)' 
+        }}>
           {tenantId === 'sicsa' ? (
-            <div style={{ padding: '0.25rem 0', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+            <div style={{ padding: '0.2rem 0', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
               <img 
                 src="https://sicsa.com.ni/wp-content/uploads/2023/06/logo-sisca-azul-medium.png" 
                 alt="SICSA Nicaragua Logo" 
                 style={{ 
-                  height: '38px', 
+                  height: '34px', 
                   maxWidth: '100%', 
                   objectFit: 'contain',
                   filter: 'brightness(0) invert(1)'
@@ -905,516 +1106,808 @@ function App() {
               />
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" style={{ filter: 'drop-shadow(0 2px 8px rgba(37,99,235,0.5))' }}>
-                <rect x="3" y="8" width="18" height="12" rx="3" fill="#3b82f6"/>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26" fill="none">
+                <rect x="3" y="8" width="18" height="12" rx="3" fill="#38bdf8"/>
                 <path d="M12 2v6M9 2h6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
                 <circle cx="8" cy="14" r="2" fill="#ffffff"/>
                 <circle cx="16" cy="14" r="2" fill="#ffffff"/>
-                <circle cx="8" cy="14" r="0.75" fill="#3b82f6"/>
-                <circle cx="16" cy="14" r="0.75" fill="#3b82f6"/>
-                <path d="M9 18h6" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round"/>
-                <rect x="1" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
-                <rect x="21" y="11" width="2" height="6" rx="1" fill="#1d4ed8"/>
               </svg>
               <div>
-                <h1 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#0b2b4c', letterSpacing: '-0.02em', lineHeight: 1.2 }}>Agente IA</h1>
-                <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Control Panel</span>
+                <h1 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#f8fafc', letterSpacing: '-0.02em' }}>Plataforma IA</h1>
+                <span style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Control Center</span>
               </div>
             </div>
           )}
-          {tenantId === 'sicsa' && (
-            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              AI Platform
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.1rem' }}>
+            <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              PRODUCCIÓN ({tenantId?.toUpperCase()})
+            </span>
+            <span style={{ 
+              fontSize: '0.62rem', 
+              padding: '0.1rem 0.4rem', 
+              backgroundColor: 'rgba(56, 189, 248, 0.15)', 
+              color: '#38bdf8', 
+              borderRadius: '10px',
+              fontWeight: 800,
+              border: '1px solid rgba(56, 189, 248, 0.3)'
+            }}>
+              v2.5
+            </span>
+          </div>
         </div>
 
-        {/* Current User Badge in Sidebar */}
+        {/* User Profile Card & Agent Status */}
         <div style={{ 
-          padding: '0.75rem 1rem', 
-          backgroundColor: 'rgba(255,255,255,0.04)', 
-          borderRadius: '8px', 
-          marginBottom: '1.5rem',
-          border: '1px solid rgba(255,255,255,0.08)'
+          padding: '0.85rem', 
+          backgroundColor: 'rgba(255,255,255,0.03)', 
+          borderRadius: '12px', 
+          marginBottom: '1.25rem',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05)'
         }}>
-          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.2rem' }}>Empresa (Tenant)</div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            {tenantId?.toUpperCase()}
-            {role && (
-              <span style={{ 
-                fontSize: '0.65rem', 
-                padding: '0.1rem 0.35rem', 
-                backgroundColor: role === 'superadmin' ? 'rgba(239, 68, 68, 0.2)' : role === 'admin' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(156, 163, 175, 0.2)', 
-                color: role === 'superadmin' ? '#f87171' : role === 'admin' ? '#60a5fa' : '#9ca3af',
-                borderRadius: '4px',
-                fontWeight: 'bold'
+          {/* User Info Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+              <div style={{ 
+                width: '30px', 
+                height: '30px', 
+                borderRadius: '50%', 
+                backgroundColor: role === 'superadmin' ? '#ef4444' : role === 'admin' ? '#2563eb' : '#10b981',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 800,
+                fontSize: '0.8rem',
+                flexShrink: 0
               }}>
-                {role === 'superadmin' ? 'S.Admin' : role === 'admin' ? 'Admin' : 'Lector'}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.1rem' }}>Usuario</div>
-          <div style={{ fontSize: '0.75rem', color: '#0b2b4c', wordBreak: 'break-all', fontWeight: 500, marginBottom: '0.5rem' }}>{userEmail}</div>
+                {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div style={{ overflow: 'hidden' }}>
+                <div style={{ fontSize: '0.76rem', color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {userEmail || 'Asesor'}
+                </div>
+                <div style={{ fontSize: '0.65rem', color: role === 'superadmin' ? '#f87171' : role === 'admin' ? '#60a5fa' : '#34d399', fontWeight: 700 }}>
+                  {role === 'superadmin' ? '👑 Super Admin' : role === 'admin' ? '💼 Admin Tenant' : '🎧 Asesor de Ventas'}
+                </div>
+              </div>
+            </div>
 
-          {/* Phase 4: Agent Status Selector (Pauses) */}
-          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.2rem' }}>Estado del Agente</div>
-          <select
-            value={agentStatus}
-            onChange={async (e) => {
-              const newStatus = e.target.value;
-              setAgentStatus(newStatus);
-              try {
-                await fetch('/api/agent-status', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                  },
-                  body: JSON.stringify({ status: newStatus })
-                });
-              } catch (err) {
-                console.error('Error updating status:', err);
-              }
-            }}
-            style={{
-              width: '100%',
-              padding: '0.35rem 0.5rem',
-              borderRadius: '6px',
-              backgroundColor: '#071D34',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: agentStatus === 'online' ? '#34d399' : agentStatus === 'busy' ? '#f87171' : '#fbbf24',
-              fontSize: '0.75rem',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="online">🟢 Disponible</option>
-            <option value="busy">🔴 Ocupado / En Llamada</option>
-            <option value="lunch">🍕 En Almuerzo</option>
-            <option value="training">📚 En Capacitación</option>
-            <option value="break">☕ En Pausa Corta</option>
-          </select>
+            <button
+              type="button"
+              onClick={() => setShowChangePassModal(true)}
+              title="Cambiar tu contraseña"
+              style={{
+                padding: '0.25rem 0.45rem',
+                borderRadius: '6px',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                color: '#38bdf8',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.2rem'
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>key</span>
+              Pass
+            </button>
+          </div>
+
+          {/* Super Admin Tenant Switcher Dropdown */}
+          {role === 'superadmin' && (
+            <div style={{ marginBottom: '0.65rem' }}>
+              <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                Cambiar Tenant (Global):
+              </div>
+              <select
+                value={tenantId || ''}
+                onChange={(e) => {
+                  const newT = e.target.value;
+                  if (newT) {
+                    setTenantId(newT);
+                    localStorage.setItem('tenant_id', newT);
+                    showToast(`¡Cambiado al inquilino ${newT.toUpperCase()}!`);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.4rem 0.5rem',
+                  borderRadius: '6px',
+                  backgroundColor: '#0c2240',
+                  border: '1px solid #3b82f6',
+                  color: '#60a5fa',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                {tenants.length > 0 ? (
+                  tenants.map(t => (
+                    <option key={t.tenant_id} value={t.tenant_id}>
+                      🏢 {t.tenant_name || t.tenant_id.toUpperCase()} ({t.tenant_id})
+                    </option>
+                  ))
+                ) : (
+                  <option value={tenantId || 'sicsa'}>🏢 {tenantId?.toUpperCase()}</option>
+                )}
+              </select>
+            </div>
+          )}
+
+          {/* Agent Availability Status Select */}
+          <div style={{ marginTop: '0.4rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+              <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Estado de Disponibilidad</span>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: agentStatus === 'online' ? '#10b981' : agentStatus === 'busy' ? '#ef4444' : agentStatus === 'idle' ? '#94a3b8' : '#f59e0b',
+                boxShadow: agentStatus === 'online' ? '0 0 8px #10b981' : 'none'
+              }} />
+            </div>
+
+            <select
+              value={agentStatus}
+              onChange={async (e) => {
+                const newStatus = e.target.value;
+                setAgentStatus(newStatus);
+                isAutoIdledRef.current = false;
+                try {
+                  await fetch('/api/agent-status', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ status: newStatus })
+                  });
+                } catch (err) {
+                  console.error('Error updating status:', err);
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '0.4rem 0.5rem',
+                borderRadius: '6px',
+                backgroundColor: '#0c2240',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: agentStatus === 'online' ? '#34d399' : agentStatus === 'busy' ? '#f87171' : agentStatus === 'idle' ? '#cbd5e1' : '#fbbf24',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                marginBottom: '0.4rem'
+              }}
+            >
+              <option value="online">🟢 Disponible (En línea)</option>
+              <option value="busy">🔴 Ocupado / En Llamada</option>
+              <option value="lunch">🍱 En Almuerzo</option>
+              <option value="training">🎓 En Capacitación</option>
+              <option value="break">☕ En Pausa Corta</option>
+              <option value="idle">🌙 Ausente (Auto-Idle)</option>
+            </select>
+          </div>
+
+          {/* Auto-Idle Timeout Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+            <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>Inactividad Auto:</span>
+            <select
+              value={autoIdleMinutes}
+              onChange={(e) => setAutoIdleMinutes(parseInt(e.target.value))}
+              style={{
+                padding: '0.2rem 0.4rem',
+                borderRadius: '4px',
+                backgroundColor: '#0c2240',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: '#38bdf8',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              <option value={5}>5 min</option>
+              <option value={10}>10 min (Ideal)</option>
+              <option value={15}>15 min</option>
+              <option value={30}>30 min</option>
+              <option value={0}>Off</option>
+            </select>
+          </div>
         </div>
 
         {/* Sidebar Nav Links */}
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', flex: 1, overflowY: 'auto' }}>
-          <button
-            onClick={() => setActiveTab('settings')}
+        <nav style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '0.2rem', 
+          flex: 1, 
+          overflowY: 'auto', 
+          paddingRight: '0.2rem' 
+        }}>
+          
+          {/* GROUP 1: OPERACIONES Y VENTAS */}
+          <div
+            onClick={() => toggleGroup('operations')}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'settings' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'settings' ? '3px solid #3b82f6' : '3px solid transparent',
-              color: activeTab === 'settings' ? '#60a5fa' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              color: '#38bdf8',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.5rem 0.6rem 0.25rem 0.6rem',
+              marginTop: '0.1rem',
               cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              userSelect: 'none'
             }}
           >
-            Ajustes del Agente
-          </button>
+            <span>Operaciones & Ventas</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#38bdf8' }}>
+              {collapsedGroups.operations ? 'chevron_right' : 'expand_more'}
+            </span>
+          </div>
 
-          <button
-            onClick={() => setActiveTab('knowledge')}
+          {!collapsedGroups.operations && (
+            <>
+              <button
+                onClick={() => setActiveTab('home')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'home' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'home' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: activeTab === 'home' ? '#38bdf8' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'home' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>home</span>
+                Inicio / Home del Asesor
+              </button>
+
+              <button
+                onClick={() => setActiveTab('inbox')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'inbox' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'inbox' ? '3px solid #10b981' : '3px solid transparent',
+                  color: activeTab === 'inbox' ? '#34d399' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'inbox' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>forum</span>
+                Bandeja En Vivo (Chats)
+              </button>
+
+              <button
+                onClick={() => setActiveTab('kanban')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'kanban' ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'kanban' ? '3px solid #f59e0b' : '3px solid transparent',
+                  color: activeTab === 'kanban' ? '#fbbf24' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'kanban' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>view_kanban</span>
+                Pipeline CRM (Kanban)
+              </button>
+
+              <button
+                onClick={() => setActiveTab('contacts')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'contacts' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'contacts' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: activeTab === 'contacts' ? '#38bdf8' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'contacts' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>group</span>
+                Directorio de Leads
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('appointments');
+                  fetchAppointments();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'appointments' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'appointments' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: activeTab === 'appointments' ? '#38bdf8' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'appointments' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>calendar_month</span>
+                Agenda de Citas
+              </button>
+            </>
+          )}
+
+          {/* GROUP 2: IA Y CONFIGURACIÓN */}
+          <div
+            onClick={() => toggleGroup('ai')}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'knowledge' ? 'rgba(168, 85, 247, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'knowledge' ? '3px solid #a855f7' : '3px solid transparent',
-              color: activeTab === 'knowledge' ? '#c084fc' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              color: '#c084fc',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.65rem 0.6rem 0.25rem 0.6rem',
+              marginTop: '0.2rem',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
               cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              userSelect: 'none'
             }}
           >
-            Base de Conocimiento
-          </button>
+            <span>Agente IA</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#c084fc' }}>
+              {collapsedGroups.ai ? 'chevron_right' : 'expand_more'}
+            </span>
+          </div>
 
-          <button
-            onClick={() => {
-              setActiveTab('appointments');
-              fetchAppointments();
-            }}
+          {!collapsedGroups.ai && (
+            <>
+              <button
+                onClick={() => setActiveTab('settings')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'settings' ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'settings' ? '3px solid #a855f7' : '3px solid transparent',
+                  color: activeTab === 'settings' ? '#c084fc' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'settings' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>smart_toy</span>
+                Ajustes del Agente
+              </button>
+
+              <button
+                onClick={() => setActiveTab('knowledge')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'knowledge' ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'knowledge' ? '3px solid #a855f7' : '3px solid transparent',
+                  color: activeTab === 'knowledge' ? '#c084fc' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'knowledge' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>psychology</span>
+                Base de Conocimiento
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('products');
+                  fetchProducts();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'products' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'products' ? '3px solid #10b981' : '3px solid transparent',
+                  color: activeTab === 'products' ? '#34d399' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'products' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>inventory_2</span>
+                Catálogo de Productos
+              </button>
+            </>
+          )}
+
+          {/* GROUP 3: INTELIGENCIA Y REPORTES */}
+          <div
+            onClick={() => toggleGroup('analytics')}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'appointments' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'appointments' ? '3px solid #3b82f6' : '3px solid transparent',
-              color: activeTab === 'appointments' ? '#60a5fa' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              color: '#f472b6',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.65rem 0.6rem 0.25rem 0.6rem',
+              marginTop: '0.2rem',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
               cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              userSelect: 'none'
             }}
           >
-            Agenda de Citas
-          </button>
+            <span>Informes & Analítica</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#f472b6' }}>
+              {collapsedGroups.analytics ? 'chevron_right' : 'expand_more'}
+            </span>
+          </div>
 
-          <button
-            onClick={() => {
-              setActiveTab('products');
-              fetchProducts();
-            }}
+          {!collapsedGroups.analytics && (
+            <>
+              <button
+                onClick={() => {
+                  setActiveTab('analytics');
+                  fetchAnalytics();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'analytics' ? 'rgba(236, 72, 153, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'analytics' ? '3px solid #ec4899' : '3px solid transparent',
+                  color: activeTab === 'analytics' ? '#f472b6' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'analytics' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>analytics</span>
+                Reportes e Informes BI
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('lost-sales');
+                  fetchLostSales();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'lost-sales' ? 'rgba(239, 68, 68, 0.14)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'lost-sales' ? '3px solid #ef4444' : '3px solid transparent',
+                  color: activeTab === 'lost-sales' ? '#f87171' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'lost-sales' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>shopping_cart_checkout</span>
+                Ventas Perdidas
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('chats');
+                  fetchConversations();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'chats' ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'chats' ? '3px solid #f59e0b' : '3px solid transparent',
+                  color: activeTab === 'chats' ? '#fbbf24' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'chats' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>visibility</span>
+                Auditoría de Chats
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('activity');
+                  fetchLogs();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'activity' ? 'rgba(139, 92, 246, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'activity' ? '3px solid #8b5cf6' : '3px solid transparent',
+                  color: activeTab === 'activity' ? '#a78bfa' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'activity' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>vital_signs</span>
+                Bitácora en Vivo
+              </button>
+            </>
+          )}
+
+          {/* GROUP 4: CANALES Y ADMINISTRACIÓN */}
+          <div
+            onClick={() => toggleGroup('system')}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'products' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'products' ? '3px solid #10b981' : '3px solid transparent',
-              color: activeTab === 'products' ? '#34d399' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              color: '#2dd4bf',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '0.65rem 0.6rem 0.25rem 0.6rem',
+              marginTop: '0.2rem',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
               cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              userSelect: 'none'
             }}
           >
-            Catálogo de Productos
-          </button>
+            <span>Canales & Sistema</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#2dd4bf' }}>
+              {collapsedGroups.system ? 'chevron_right' : 'expand_more'}
+            </span>
+          </div>
 
-          <button
-            onClick={() => {
-              setActiveTab('chats');
-              fetchConversations();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'chats' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'chats' ? '3px solid #f59e0b' : '3px solid transparent',
-              color: activeTab === 'chats' ? '#fbbf24' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Auditoría de Chats
-          </button>
+          {!collapsedGroups.system && (
+            <>
+              <button
+                onClick={() => setActiveTab('control-plane')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'control-plane' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'control-plane' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: activeTab === 'control-plane' ? '#38bdf8' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'control-plane' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>lan</span>
+                Control Plane (Meta)
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('analytics');
-              fetchAnalytics();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'analytics' ? 'rgba(236, 72, 153, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'analytics' ? '3px solid #ec4899' : '3px solid transparent',
-              color: activeTab === 'analytics' ? '#f472b6' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Reportes e Informes Ejecutivos
-          </button>
+              <button
+                onClick={() => setActiveTab('webhook')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'webhook' ? 'rgba(20, 184, 166, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'webhook' ? '3px solid #14b8a6' : '3px solid transparent',
+                  color: activeTab === 'webhook' ? '#2dd4bf' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'webhook' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>webhook</span>
+                Conectar Webhook
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('activity');
-              fetchLogs();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'activity' ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'activity' ? '3px solid #8b5cf6' : '3px solid transparent',
-              color: activeTab === 'activity' ? '#a78bfa' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Actividad en Vivo
-          </button>
+              <button
+                onClick={() => setActiveTab('teams')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'teams' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'teams' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: activeTab === 'teams' ? '#38bdf8' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'teams' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>groups</span>
+                Gestión de Equipos (Teams)
+              </button>
 
-          <button
-            onClick={() => setActiveTab('webhook')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'webhook' ? 'rgba(20, 184, 166, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'webhook' ? '3px solid #14b8a6' : '3px solid transparent',
-              color: activeTab === 'webhook' ? '#2dd4bf' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Conectar Webhook
-          </button>
+              <button
+                onClick={() => {
+                  setActiveTab('users');
+                  fetchUsers();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'users' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'users' ? '3px solid #38bdf8' : '3px solid transparent',
+                  color: activeTab === 'users' ? '#38bdf8' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'users' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>manage_accounts</span>
+                Usuarios y Tokens
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('users');
-              fetchUsers();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'users' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'users' ? '3px solid #2563eb' : '3px solid transparent',
-              color: activeTab === 'users' ? '#60a5fa' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Usuarios y Tokens
-          </button>
+              <button
+                onClick={() => setActiveTab('api-docs')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: activeTab === 'api-docs' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
+                  border: 'none',
+                  borderLeft: activeTab === 'api-docs' ? '3px solid #10b981' : '3px solid transparent',
+                  color: activeTab === 'api-docs' ? '#34d399' : '#94a3b8',
+                  padding: '0.55rem 0.75rem',
+                  borderRadius: '0 8px 8px 0',
+                  fontSize: '0.82rem',
+                  fontWeight: activeTab === 'api-docs' ? 800 : 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>description</span>
+                Portal de API & Docs
+              </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('lost-sales');
-              fetchLostSales();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'lost-sales' ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'lost-sales' ? '3px solid #ef4444' : '3px solid transparent',
-              color: activeTab === 'lost-sales' ? '#f87171' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Ventas Perdidas
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('api-docs');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'api-docs' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'api-docs' ? '3px solid #10b981' : '3px solid transparent',
-              color: activeTab === 'api-docs' ? '#34d399' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Portal de API & Docs
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('control-plane');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'control-plane' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'control-plane' ? '3px solid #3b82f6' : '3px solid transparent',
-              color: activeTab === 'control-plane' ? '#60a5fa' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Control Plane (Canales/Meta)
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('inbox');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'inbox' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'inbox' ? '3px solid #10b981' : '3px solid transparent',
-              color: activeTab === 'inbox' ? '#34d399' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Bandeja En Vivo (Chats)
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('contacts');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'contacts' ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'contacts' ? '3px solid #3b82f6' : '3px solid transparent',
-              color: activeTab === 'contacts' ? '#60a5fa' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            Directorio de Contactos (Leads)
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('kanban');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: activeTab === 'kanban' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-              border: 'none',
-              borderLeft: activeTab === 'kanban' ? '3px solid #f59e0b' : '3px solid transparent',
-              color: activeTab === 'kanban' ? '#fbbf24' : '#9ca3af',
-              padding: '0.75rem 1rem',
-              borderRadius: '0 8px 8px 0',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'all 0.2s'
-            }}
-          >
-            📌 Pipeline CRM (Kanban)
-          </button>
-
-          {role === 'superadmin' && (
-            <button
-              onClick={() => {
-                setActiveTab('admin');
-                fetchTenants();
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                background: activeTab === 'admin' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'admin' ? '3px solid #ef4444' : '3px solid transparent',
-                color: activeTab === 'admin' ? '#f87171' : '#9ca3af',
-                padding: '0.75rem 1rem',
-                borderRadius: '0 8px 8px 0',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.2s'
-              }}
-            >
-              Super Admin
-            </button>
+              {role === 'superadmin' && (
+                <button
+                  onClick={() => {
+                    setActiveTab('admin');
+                    fetchTenants();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                    background: activeTab === 'admin' ? 'rgba(239, 68, 68, 0.16)' : 'transparent',
+                    border: 'none',
+                    borderLeft: activeTab === 'admin' ? '3px solid #ef4444' : '3px solid transparent',
+                    color: activeTab === 'admin' ? '#f87171' : '#94a3b8',
+                    padding: '0.55rem 0.75rem',
+                    borderRadius: '0 8px 8px 0',
+                    fontSize: '0.82rem',
+                    fontWeight: activeTab === 'admin' ? 800 : 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s',
+                    marginTop: '0.1rem'
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>admin_panel_settings</span>
+                  Super Admin Global
+                </button>
+              )}
+            </>
           )}
         </nav>
 
-        {/* Sidebar Footer Logout */}
-        <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* Sidebar Footer Logout Button */}
+        <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <button
             onClick={handleLogout}
             style={{
               width: '100%',
+              padding: '0.6rem 0.85rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              color: '#f87171',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '0.5rem',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
-              borderRadius: '8px',
-              color: '#f87171',
-              padding: '0.65rem',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
               transition: 'all 0.2s'
             }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
-            }}
           >
+            <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>logout</span>
             Cerrar Sesión
           </button>
         </div>
@@ -1422,48 +1915,52 @@ function App() {
 
       {/* Main Layout Area */}
       <div style={{ marginLeft: '280px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', boxSizing: 'border-box' }}>
-        {/* Top Header bar */}
+        {/* Top Header bar (Ultra-compact & Space-efficient) */}
         <header style={{
           background: '#ffffff',
           borderBottom: '1px solid var(--border-color)',
-          padding: '1.25rem 2rem',
+          padding: '0.65rem 1.25rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           position: 'sticky',
           top: 0,
           zIndex: 10,
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          boxShadow: '0 1px 4px rgba(11, 43, 76, 0.03)'
         }}>
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              {activeTab === 'inbox' && 'Bandeja En Vivo (Chats)'}
+              {activeTab === 'kanban' && 'Pipeline CRM (Kanban)'}
+              {activeTab === 'contacts' && 'Directorio de Leads'}
               {activeTab === 'settings' && 'Ajustes del Agente IA'}
-              {activeTab === 'knowledge' && 'Base de Conocimiento (FAQs y Horarios)'}
+              {activeTab === 'knowledge' && 'Base de Conocimiento'}
               {activeTab === 'products' && 'Catálogo de Productos'}
               {activeTab === 'chats' && 'Auditoría de Historial de Chats'}
-              {activeTab === 'analytics' && 'Estadísticas de Consultas'}
-              {activeTab === 'activity' && 'Actividad en Vivo'}
-              {activeTab === 'webhook' && 'Integración de Webhook'}
-              {activeTab === 'users' && 'Gestión de Usuarios y Tokens'}
-              {activeTab === 'appointments' && 'Agenda de Citas (Agendamiento IA)'}
-              {activeTab === 'admin' && 'Panel de Super Administración Global'}
+              {activeTab === 'analytics' && 'Reportes & Analítica BI'}
+              {activeTab === 'lost-sales' && 'Ventas Perdidas'}
+              {activeTab === 'activity' && 'Bitácora en Vivo'}
+              {activeTab === 'webhook' && 'Conectar Webhook'}
+              {activeTab === 'control-plane' && 'Control Plane (Meta)'}
+              {activeTab === 'users' && 'Usuarios y Tokens'}
+              {activeTab === 'api-docs' && 'Portal de API & Docs'}
+              {activeTab === 'appointments' && 'Agenda de Citas'}
+              {activeTab === 'admin' && 'Panel de Super Administración'}
             </h2>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.2rem 0 0 0' }}>
-              Panel de control y optimización del asistente inteligente
-            </p>
           </div>
 
           {/* Status Badges in Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div className="status-badge">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div className="status-badge" style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem' }}>
               <div className={`status-dot ${isChatwootConfigured ? 'active' : 'inactive'}`} />
-              <span>Chatwoot</span>
+              <span>Conexión CRM</span>
             </div>
-            <div className="status-badge">
+            <div className="status-badge" style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem' }}>
               <div className={`status-dot ${isAIConfigured ? 'active' : 'inactive'}`} />
-              <span>AI: {config.active_provider === 'gemini' ? 'Gemini' : 'DeepSeek'}</span>
+              <span>AI: {isAIConfigured ? 'Motor IA Activo' : 'Sin Configurar'}</span>
             </div>
-            <div className="status-badge">
+            <div className="status-badge" style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem' }}>
               <div className="status-dot active" />
               <span>Catálogo ({products.length})</span>
             </div>
@@ -1471,15 +1968,56 @@ function App() {
         </header>
 
         {/* Dashboard Main Content grid */}
-        <main style={{ padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <main style={{ padding: '0.85rem 1.25rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div className="dashboard-grid">
             <section>
+          {activeTab === 'home' && (
+            <AdvisorHomeTab
+              tenantId={tenantId || 'sicsa'}
+              token={token}
+              role={role}
+              onOpenChat={() => setActiveTab('inbox')}
+              onOpenKanban={() => setActiveTab('kanban')}
+            />
+          )}
+
           {activeTab === 'settings' && (
             <form onSubmit={saveConfig} className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-              <h2 className="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                Configuración del Agente IA
-              </h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 className="card-title" style={{ margin: 0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary)' }}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Configuración del Agente IA ({tenantId?.toUpperCase()})
+                  </h2>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                    Ajuste de llaves de API, prompt de identidad, horario comercial 24/7 y reglas de escalamiento.
+                  </p>
+                </div>
+
+                {(role === 'admin' || role === 'superadmin') && (
+                  <button
+                    type="button"
+                    onClick={() => setShowOnboarding(true)}
+                    style={{
+                      padding: '0.55rem 1.1rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)'
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>rocket_launch</span>
+                    🚀 Lanzar Asistente de Onboarding
+                  </button>
+                )}
+              </div>
 
               {/* Provider Switch */}
               <div className="form-group">
@@ -1490,14 +2028,14 @@ function App() {
                     className={`provider-btn ${config.active_provider === 'gemini' ? 'active' : ''}`}
                     onClick={() => handleProviderSelect('gemini')}
                   >
-                    🚀 Google Gemini
+                    🚀 Motor IA Principal (Standard)
                   </button>
                   <button
                     type="button"
                     className={`provider-btn ${config.active_provider === 'deepseek' ? 'active' : ''}`}
                     onClick={() => handleProviderSelect('deepseek')}
                   >
-                    🧠 DeepSeek
+                    🧠 Motor IA Avanzado (High Performance)
                   </button>
                 </div>
               </div>
@@ -1505,26 +2043,26 @@ function App() {
               {/* AI API Keys */}
               {config.active_provider === 'gemini' ? (
                 <div className="form-group">
-                  <label htmlFor="gemini_api_key">Google Gemini API Key</label>
+                  <label htmlFor="gemini_api_key">Clave de API Motor IA Principal</label>
                   <input
                     type="password"
                     id="gemini_api_key"
                     name="gemini_api_key"
                     value={config.gemini_api_key}
                     onChange={handleInputChange}
-                    placeholder={config.gemini_api_key ? '***' : 'Ingresa tu API Key de Gemini'}
+                    placeholder={config.gemini_api_key ? '***' : 'Ingresa tu API Key del Motor Principal'}
                   />
                 </div>
               ) : (
                 <div className="form-group">
-                  <label htmlFor="deepseek_api_key">DeepSeek API Key</label>
+                  <label htmlFor="deepseek_api_key">Clave de API Motor IA Avanzado</label>
                   <input
                     type="password"
                     id="deepseek_api_key"
                     name="deepseek_api_key"
                     value={config.deepseek_api_key}
                     onChange={handleInputChange}
-                    placeholder={config.deepseek_api_key ? '***' : 'Ingresa tu API Key de DeepSeek'}
+                    placeholder={config.deepseek_api_key ? '***' : 'Ingresa tu API Key del Motor Avanzado'}
                   />
                 </div>
               )}
@@ -1540,6 +2078,56 @@ function App() {
                   rows={15}
                   placeholder="Instrucciones detalladas de interacción, respuestas del catálogo y reglas..."
                 />
+              </div>
+
+              {/* Comportamiento de la IA por Horario de Atención */}
+              <div style={{ backgroundColor: '#eff6ff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #bfdbfe', margin: '1.5rem 0 1.5rem 0', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, color: '#1e40af', fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span className="material-symbols-outlined" style={{ color: '#2563eb', fontSize: '1.3rem' }}>schedule</span>
+                    Horario de Atención y Comportamiento de la IA (24/7)
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('knowledge')}
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      borderRadius: '8px',
+                      border: '1px solid #2563eb',
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem'
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>edit_calendar</span>
+                    Configurar Horario en Base de Conocimiento
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
+                  <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '8px', border: '1px solid #dbeafe' }}>
+                    <div style={{ fontWeight: 800, color: '#1e3a8a', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
+                      ☀️ DENTRO del Horario de Atención
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
+                      La IA atiende dudas de catálogo, precios y servicios. Si el cliente requiere hablar con un humano o califica para escalamiento, la IA <strong>transfiere la conversación inmediatamente en caliente</strong> al vendedor o equipo asignado en Chatwoot.
+                    </p>
+                  </div>
+
+                  <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '8px', border: '1px solid #dbeafe' }}>
+                    <div style={{ fontWeight: 800, color: '#1e3a8a', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
+                      🌙 FUERA del Horario de Atención
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
+                      La IA <strong>continúa respondiendo 24/7</strong> a todas las consultas de productos. Si el cliente solicita un humano, le explica amablemente el horario comercial, promete respuesta al abrir y <strong>registra la oportunidad en el CRM</strong> sin forzar transferencia en caliente.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Rules for human escalation */}
@@ -1598,38 +2186,110 @@ function App() {
                   </div>
                 </div>
 
-                <div className="form-group" style={{ marginTop: '1rem' }}>
-                  <label htmlFor="escalation_team_id">ID del Equipo Destino en Chatwoot (Opcional)</label>
-                  <input
-                    type="number"
-                    id="escalation_team_id"
-                    name="escalation_team_id"
-                    value={config.escalation_team_id || ''}
-                    onChange={(e) => setConfig({ ...config, escalation_team_id: e.target.value ? parseInt(e.target.value) : undefined })}
-                    placeholder="Ej: 3 (Asignará el chat a ese equipo en Chatwoot al escalar)"
-                  />
+                {/* Matriz de Asignación por Intención & Selección de Equipo Destino */}
+                <div style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 2px 8px rgba(11,43,76,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h4 style={{ margin: 0, color: '#0b2b4c', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span className="material-symbols-outlined" style={{ color: '#2563eb', fontSize: '1.2rem' }}>alt_route</span>
+                        Matriz de Asignación y Auto-Escalamiento por Intención (Intent Rules Engine)
+                      </h4>
+                      <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                        La IA clasifica la intención del cliente (ej: Servicio Técnico, Compra de Servidores B2B, Retail) y auto-escala la conversación al equipo correspondiente.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('teams')}
+                      style={{
+                        padding: '0.45rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px solid #bfdbfe',
+                        backgroundColor: '#eff6ff',
+                        color: '#2563eb',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>tune</span>
+                      Administrar Intenciones & Equipos
+                    </button>
+                  </div>
+
+                  {/* Dynamic list of Intent -> Team Rules */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    {teamsList.length === 0 ? (
+                      <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', padding: '0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
+                        Cargando intenciones y equipos configurados en el sistema...
+                      </div>
+                    ) : (
+                      teamsList.map((team) => (
+                        <div key={team.id} style={{ padding: '0.75rem', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: '1.05rem', color: '#2563eb' }}>groups</span>
+                              {team.name}
+                              <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#334155', fontWeight: 700 }}>
+                                Clave: {team.team_key}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.25rem' }}>
+                              🎯 <strong>Palabras Clave de Intención:</strong> {team.ai_keywords || 'Sin palabras clave'}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#059669', backgroundColor: '#ecfdf5', padding: '0.25rem 0.55rem', borderRadius: '6px', border: '1px solid #a7f3d0', whiteSpace: 'nowrap' }}>
+                            ⚡ Auto-Escala por IA
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Fallback Team Dropdown */}
+                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.8rem' }}>
+                    <label htmlFor="escalation_team_id" style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0b2b4c', display: 'block', marginBottom: '0.3rem' }}>
+                      Equipo Destino por Defecto / Fallback (Si no coincide ninguna intención explícita):
+                    </label>
+                    <select
+                      id="escalation_team_id"
+                      name="escalation_team_id"
+                      value={config.escalation_team_id || ''}
+                      onChange={(e) => setConfig({ ...config, escalation_team_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                      style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0b2b4c', fontSize: '0.85rem', fontWeight: 700 }}
+                    >
+                      <option value="">-- Seleccionar Equipo por Defecto --</option>
+                      {teamsList.map(t => (
+                        <option key={t.id} value={t.id}>{t.name} (Clave: {t.team_key})</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              {/* Chatwoot Configuration */}
+              {/* Omnichannel Integration Settings */}
               <div style={{ borderTop: '1px solid var(--border-color)', margin: '1.5rem 0', paddingTop: '1.5rem' }}>
-                <h3 className="card-title" style={{ fontSize: '1.15rem', marginBottom: '1rem' }}>Conexión con Chatwoot</h3>
+                <h3 className="card-title" style={{ fontSize: '1.15rem', marginBottom: '1rem' }}>Conexión con Servidor Omnicanal</h3>
                 
                 <div className="form-group">
-                  <label htmlFor="chatwoot_url">URL del Servidor Chatwoot</label>
+                  <label htmlFor="chatwoot_url">URL del Servidor Omnicanal</label>
                   <input
                     type="url"
                     id="chatwoot_url"
                     name="chatwoot_url"
                     value={config.chatwoot_url}
                     onChange={handleInputChange}
-                    placeholder="https://chatwoot.tu-dominio.com"
+                    placeholder="https://mensajeria.tu-dominio.com"
                   />
                 </div>
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label htmlFor="chatwoot_account_id">ID de Cuenta</label>
+                    <label htmlFor="chatwoot_account_id">ID de Cuenta Omnicanal</label>
                     <input
                       type="number"
                       id="chatwoot_account_id"
@@ -1640,20 +2300,20 @@ function App() {
                     />
                   </div>
                   <div className="form-group">
-                    <label htmlFor="chatwoot_access_token">Access Token del Agente</label>
+                    <label htmlFor="chatwoot_access_token">Token de Acceso de Integración</label>
                     <input
                       type="password"
                       id="chatwoot_access_token"
                       name="chatwoot_access_token"
                       value={config.chatwoot_access_token}
                       onChange={handleInputChange}
-                      placeholder="Token de acceso API del Bot/Agente"
+                      placeholder="Token de acceso API del Agente"
                     />
                   </div>
                 </div>
 
                 <div className="form-group" style={{ marginTop: '1rem' }}>
-                  <label htmlFor="chatwoot_website_token">Token del Canal Web (Website Token) para chat de pruebas</label>
+                  <label htmlFor="chatwoot_website_token">Token de Canal Webchat de Pruebas</label>
                   <input
                     type="text"
                     id="chatwoot_website_token"
@@ -1681,7 +2341,7 @@ function App() {
             <form onSubmit={saveKnowledgeBase} className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
               <h2 className="card-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-secondary)' }}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5V3a2.5 2.5 0 0 1 2.5-2.5H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5z"/></svg>
-                Base de Conocimiento de {tenantId === 'demo' ? 'SICSA' : tenantId}
+                Base de Conocimiento de {tenantId ? tenantId.toUpperCase() : ''}
               </h2>
 
               <div className="form-group">
@@ -2850,110 +3510,17 @@ function App() {
           )}
 
           {activeTab === 'inbox' && (
-            <InboxWorkspace tenantId={tenantId || 'demo'} token={token} role={role} />
+            <InboxWorkspace tenantId={tenantId || 'demo'} token={token} role={role} userEmail={userEmail} />
           )}
 
           {activeTab === 'contacts' && (
-            <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <div>
-                  <h2 className="card-title" style={{ color: '#60a5fa', margin: 0 }}>
-                    👥 Directorio de Contactos y Leads (WhatsApp)
-                  </h2>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>
-                    Listado de todos los prospectos y clientes registrados en tu cuenta de Chatwoot.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setActiveTab('inbox')}
-                  className="btn-primary"
-                  style={{ backgroundColor: '#2563eb' }}
-                >
-                  💬 Ir a Bandeja En Vivo
-                </button>
-              </div>
-
-              <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', color: '#0b2b4c' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#93c5fd', textTransform: 'uppercase', fontSize: '0.72rem' }}>
-                      <th style={{ padding: '0.75rem' }}>Nombre del Contacto</th>
-                      <th style={{ padding: '0.75rem' }}>Teléfono WhatsApp</th>
-                      <th style={{ padding: '0.75rem' }}>Correo Electrónico</th>
-                      <th style={{ padding: '0.75rem' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#0b2b4c' }}>👤 icy-bird-506</td>
-                      <td style={{ padding: '0.75rem', color: '#60a5fa' }}>📱 +505 8888 5707</td>
-                      <td style={{ padding: '0.75rem', color: '#93c5fd' }}>cliente506@sicsa.com.ni</td>
-                      <td style={{ padding: '0.75rem' }}>
-                        <button
-                          onClick={() => setActiveTab('inbox')}
-                          style={{
-                            padding: '0.35rem 0.75rem',
-                            borderRadius: '6px',
-                            border: 'none',
-                            backgroundColor: '#2563eb',
-                            color: '#fff',
-                            fontWeight: 'bold',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          💬 Iniciar Chat
-                        </button>
-                      </td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#0b2b4c' }}>👤 twilight-rain-593</td>
-                      <td style={{ padding: '0.75rem', color: '#60a5fa' }}>📱 +505 8777 4432</td>
-                      <td style={{ padding: '0.75rem', color: '#93c5fd' }}>twilight@sicsa.com.ni</td>
-                      <td style={{ padding: '0.75rem' }}>
-                        <button
-                          onClick={() => setActiveTab('inbox')}
-                          style={{
-                            padding: '0.35rem 0.75rem',
-                            borderRadius: '6px',
-                            border: 'none',
-                            backgroundColor: '#2563eb',
-                            color: '#fff',
-                            fontWeight: 'bold',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          💬 Iniciar Chat
-                        </button>
-                      </td>
-                    </tr>
-                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '0.75rem', fontWeight: 'bold', color: '#0b2b4c' }}>👤 Sofia (AI Agent) Lead</td>
-                      <td style={{ padding: '0.75rem', color: '#60a5fa' }}>📱 +505 8999 1122</td>
-                      <td style={{ padding: '0.75rem', color: '#93c5fd' }}>lead@sicsa.com.ni</td>
-                      <td style={{ padding: '0.75rem' }}>
-                        <button
-                          onClick={() => setActiveTab('inbox')}
-                          style={{
-                            padding: '0.35rem 0.75rem',
-                            borderRadius: '6px',
-                            border: 'none',
-                            backgroundColor: '#2563eb',
-                            color: '#fff',
-                            fontWeight: 'bold',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          💬 Iniciar Chat
-                        </button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ContactsDirectoryTab
+              tenantId={tenantId || 'demo'}
+              token={token}
+              role={role}
+              onOpenChat={() => setActiveTab('inbox')}
+              onOpenOpportunityModal={() => setActiveTab('kanban')}
+            />
           )}
 
           {activeTab === 'kanban' && (
@@ -3160,39 +3727,182 @@ function App() {
 
           {activeTab === 'activity' && (
             <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-              <h2 className="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-secondary)' }}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                Actividad del Asistente (Conversaciones en Vivo)
-              </h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.4 }}>
-                A continuación se muestran los mensajes más recientes procesados por el asistente en tiempo real.
-              </p>
-              <div className="logs-list" style={{ maxHeight: '600px' }}>
-                {logs.length === 0 ? (
-                  <div className="empty-state">
-                    <p>No hay mensajes registrados aún.</p>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      Los mensajes enviados por tus clientes aparecerán aquí en tiempo real cuando se conecte el webhook.
-                    </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 className="card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0b2b4c' }}>
+                    <span className="material-symbols-outlined" style={{ color: '#8b5cf6', fontSize: '1.6rem' }}>vital_signs</span>
+                    Bitácora en Vivo: Actividad del Asistente ({tenantId?.toUpperCase()})
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0 0 0' }}>
+                    Supervisión en tiempo real optimizada para alto volumen (400+ conversaciones diarias). Límite de carga inteligente para latencia cero.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  {/* Auto-polling toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsAutoPolling(!isAutoPolling)}
+                    style={{
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '8px',
+                      border: '1px solid',
+                      borderColor: isAutoPolling ? '#10b981' : '#cbd5e1',
+                      backgroundColor: isAutoPolling ? '#ecfdf5' : '#f8fafc',
+                      color: isAutoPolling ? '#059669' : '#64748b',
+                      fontSize: '0.78rem',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem'
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: isAutoPolling ? '#10b981' : '#94a3b8' }}>
+                      {isAutoPolling ? 'sync' : 'pause_circle'}
+                    </span>
+                    {isAutoPolling ? '🟢 Refresco Automático (5s)' : '⏸️ Polling Pausado'}
+                  </button>
+
+                  {/* Message limit selector */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
+                    <span>Límite:</span>
+                    <select
+                      value={logLimit}
+                      onChange={(e) => {
+                        const newLimit = parseInt(e.target.value);
+                        setLogLimit(newLimit);
+                        fetchLogs(newLimit);
+                      }}
+                      style={{
+                        padding: '0.4rem 0.6rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#0b2b4c',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      <option value={20}>Últimos 20 msgs</option>
+                      <option value={50}>Últimos 50 msgs</option>
+                      <option value={100}>Últimos 100 msgs</option>
+                    </select>
                   </div>
-                ) : (
-                  logs.map((log) => (
-                    <div key={log.id} className="log-item">
-                      <div className="log-header">
-                        <span className={`log-role ${log.role}`}>
-                          {log.role === 'user' ? 'Cliente' : 'Sofía (IA)'}
-                        </span>
-                        <span className="log-time">
+                </div>
+              </div>
+
+              {/* Quick Search & Filter bar */}
+              <div style={{
+                display: 'flex',
+                gap: '0.75rem',
+                backgroundColor: '#f8fafc',
+                padding: '0.75rem',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                marginBottom: '1.25rem',
+                alignItems: 'center'
+              }}>
+                <span className="material-symbols-outlined" style={{ color: '#64748b', fontSize: '1.2rem' }}>search</span>
+                <input
+                  type="text"
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  placeholder="Filtrar por palabra clave o ID de conversación (ej: 2)..."
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    fontSize: '0.85rem',
+                    color: '#0b2b4c',
+                    outline: 'none'
+                  }}
+                />
+                {logSearchQuery && (
+                  <button
+                    onClick={() => setLogSearchQuery('')}
+                    style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ✕ Limpiar
+                  </button>
+                )}
+              </div>
+
+              {/* Logs Stream */}
+              <div className="logs-list" style={{ maxHeight: '580px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {(() => {
+                  const filteredLogs = logs.filter(log => {
+                    if (!logSearchQuery.trim()) return true;
+                    const q = logSearchQuery.toLowerCase();
+                    return (
+                      log.content.toLowerCase().includes(q) ||
+                      log.conversation_id.toString().includes(q) ||
+                      log.role.toLowerCase().includes(q)
+                    );
+                  });
+
+                  if (filteredLogs.length === 0) {
+                    return (
+                      <div className="empty-state" style={{ padding: '3rem', textAlign: 'center' }}>
+                        <p style={{ fontWeight: 'bold', color: '#64748b' }}>No se encontraron registros de actividad.</p>
+                        <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                          {logSearchQuery ? 'Prueba cambiando el término de búsqueda.' : 'Los mensajes de WhatsApp aparecerán aquí en vivo al ser procesados por la IA.'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return filteredLogs.map((log) => (
+                    <div key={log.id} className="log-item" style={{
+                      padding: '0.85rem 1rem',
+                      borderRadius: '10px',
+                      backgroundColor: log.role === 'user' ? '#f8fafc' : '#f0f9ff',
+                      border: log.role === 'user' ? '1px solid #e2e8f0' : '1px solid #bae6fd',
+                      boxShadow: '0 1px 3px rgba(11, 43, 76, 0.03)'
+                    }}>
+                      <div className="log-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            backgroundColor: log.role === 'user' ? '#e2e8f0' : '#2563eb',
+                            color: log.role === 'user' ? '#ffffff' : '#ffffff'
+                          }}>
+                            {log.role === 'user' ? '👤 CLIENTE' : '🤖 SOFÍA (IA)'}
+                          </span>
+                          <span
+                            onClick={() => {
+                              setSelectedConversationId(log.conversation_id.toString());
+                              setActiveTab('chats');
+                            }}
+                            title="Haz clic para ver el historial completo de esta conversación"
+                            style={{
+                              fontSize: '0.75rem',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              color: '#2563eb',
+                              cursor: 'pointer',
+                              backgroundColor: '#eff6ff',
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '4px',
+                              border: '1px solid #bfdbfe'
+                            }}
+                          >
+                            Conversación #{log.conversation_id} ↗
+                          </span>
+                        </div>
+                        <span className="log-time" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
                           {formatTime(log.timestamp)}
                         </span>
                       </div>
-                      <div className="log-content" style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>{log.content}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                        Conversación ID: {log.conversation_id}
+                      <div className="log-content" style={{ fontSize: '0.88rem', color: '#0b2b4c', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
+                        {log.content}
                       </div>
                     </div>
-                  ))
-                )}
+                  ));
+                })()}
               </div>
             </div>
           )}
@@ -3231,14 +3941,115 @@ function App() {
                 <li style={{ marginBottom: '0.5rem' }}>Haz clic en <b>Añadir nuevo webhook</b>.</li>
                 <li style={{ marginBottom: '0.5rem' }}>Pega la URL de arriba en el campo de dirección de destino.</li>
                 <li style={{ marginBottom: '0.5rem' }}>Selecciona el evento <b>message_created</b> (Mensaje creado).</li>
-                <li style={{ marginBottom: '0.5rem' }}>Guarda los cambios.</li>
               </ol>
             </div>
+          )}
+
+          {activeTab === 'teams' && (
+            <TeamManagementTab tenantId={tenantId || 'sicsa'} token={token} role={role} />
           )}
             </section>
           </div>
         </main>
       </div>
+
+      {showOnboarding && (
+        <OnboardingWizard
+          tenantId={tenantId || 'demo'}
+          token={token}
+          currentConfig={config}
+          currentKb={kb.faqs || ''}
+          onComplete={handleOnboardingComplete}
+          onClose={() => setShowOnboarding(false)}
+        />
+      )}
+
+      {/* Change Password Modal */}
+      {showChangePassModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(11, 43, 76, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '1.5rem'
+        }}>
+          <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#0b2b4c', fontSize: '1.1rem', fontWeight: 800 }}>
+                  🔑 Cambiar mi Contraseña
+                </h3>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                  Usuario: <strong>{userEmail}</strong>
+                </p>
+              </div>
+              <button onClick={() => setShowChangePassModal(false)} style={{ border: 'none', background: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <form onSubmit={handleChangePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="form-group">
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Contraseña Actual</label>
+                <input
+                  type="password"
+                  value={currentPasswordInput}
+                  onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                  required
+                  placeholder="Ingresa tu contraseña actual"
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Nueva Contraseña</label>
+                <input
+                  type="password"
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  required
+                  placeholder="Mínimo 6 caracteres"
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Confirmar Nueva Contraseña</label>
+                <input
+                  type="password"
+                  value={confirmPasswordInput}
+                  onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                  required
+                  placeholder="Repite la nueva contraseña"
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowChangePassModal(false)}
+                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={changingPass}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#2563eb', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
+                >
+                  {changingPass ? 'Actualizando...' : 'Guardar Nueva Contraseña'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

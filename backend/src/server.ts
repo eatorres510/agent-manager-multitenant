@@ -6,12 +6,18 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import multer from 'multer';
 import { configService, AgentConfig, KnowledgeBase } from './services/config.service.js';
 import { redisService } from './services/redis.service.js';
 import { aiService, ChatMessage } from './services/ai.service.js';
 import { controlService } from './services/control.service.js';
 
 dotenv.config();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB file limit
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -165,7 +171,7 @@ async function escalateConversation(tenantId: string, conversationId: number, ac
 
     // 3. Post private note notifying agents
     const msgUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-    await axios.post(
+    const noteRes = await axios.post(
       msgUrl,
       {
         content: `⚠️ [Bot] Conversación escalada automáticamente.\nMotivo: ${reason}`,
@@ -173,15 +179,33 @@ async function escalateConversation(tenantId: string, conversationId: number, ac
         private: true
       },
       { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
-    ).catch(err => console.error(`[Note Error] Failed to add private note:`, err.message));
+    ).catch(err => {
+      console.error(`[Note Error] Failed to add private note:`, err.message);
+      return null;
+    });
 
-    // 4. Assign to team if configured
+    if (noteRes && noteRes.data && noteRes.data.id) {
+      botSentMessages.add(`${tenantId}:${noteRes.data.id}`);
+      setTimeout(() => botSentMessages.delete(`${tenantId}:${noteRes.data.id}`), 60000);
+    }
+
+    // 4. Assign to team and check ONLINE advisor availability (skipping inactive/idle agents)
     if (config.escalation_team_id) {
-      console.log(`[Escalation] Asignando conversación a equipo ID: ${config.escalation_team_id}`);
+      console.log(`[Escalation] Verificando asesores activos 'online' en equipo ID: ${config.escalation_team_id}`);
+      const onlineMember = await controlService.getNextRoundRobinAssignee(tenantId, config.escalation_team_id);
+      
       const assignUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/assignments`;
+      const assignPayload: any = { team_id: config.escalation_team_id };
+      
+      if (onlineMember) {
+        console.log(`[Escalation Auto-Assign] Asesor activo en línea encontrado: ${onlineMember.user_name} (${onlineMember.user_email})`);
+      } else {
+        console.log(`[Escalation Filter] Todos los asesores están Inactivos/Ausentes. La conversación ingresa a la cola del equipo sin asignar a asesores inactivos.`);
+      }
+
       await axios.post(
         assignUrl,
-        { team_id: config.escalation_team_id },
+        assignPayload,
         { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
       ).catch(err => console.error(`[Team Assignment Error] Failed to assign team:`, err.response?.data || err.message));
     }
@@ -230,16 +254,27 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
       return res.status(204).json({ error: 'Tenant no encontrado.' });
     }
 
+    // Broadcast SSE live event to connected advisors
+    controlService.broadcastSseEvent(tenantId, payload.event || 'update', payload);
+
     if (payload.conversation) {
       const conversationId = payload.conversation.id;
       const status = payload.conversation.status;
       const assigneeId = payload.conversation.assignee_id || (payload.conversation.assignee && payload.conversation.assignee.id);
 
-      // 1. Detect human takeover (outgoing message from human agent)
+      // Ignore private notes, internal messages, and activity audit logs to prevent loops!
+      if (payload.private || payload.message_type === 'activity' || payload.message_type === 2) {
+        return res.status(200).json({ status: 'ignored_private_or_activity' });
+      }
+
+      // 1. Detect human takeover (outgoing public message from human agent)
       if (payload.event === 'message_created' && payload.message_type === 'outgoing') {
         const messageId = payload.id;
         if (!botSentMessages.has(`${tenantId}:${messageId}`)) {
-          console.log(`[Handover] Agente humano respondió en conversación ${conversationId}. Cambiando a open para desactivar el bot.`);
+          const sender = payload.sender;
+          const senderName = sender?.name || sender?.email || 'agente humano';
+          console.log(`[Handover] Agente humano ${senderName} envió mensaje saliente en conv #${conversationId}. Desactivando IA y auto-asignando.`);
+          
           if (status === 'pending') {
             const config = await configService.getConfig(tenantId);
             await escalateConversation(
@@ -247,22 +282,35 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
               conversationId, 
               payload.account.id, 
               config, 
-              "Toma de control manual por agente humano (mensaje saliente detectado)."
+              `Toma de control manual por ${senderName}.`
             );
           }
+
+          // Auto-assign to the sender!
+          if (sender?.id) {
+            controlService.assignConversation(tenantId, conversationId.toString(), sender.id).catch(e => console.error('[Webhook Auto-Assign Error]', e.message));
+          } else if (sender?.email) {
+            controlService.autoAssignBySenderEmail(tenantId, conversationId.toString(), sender.email).catch(e => console.error('[Webhook Auto-Assign Email Error]', e.message));
+          }
+
           return res.status(200).json({ status: 'handover_processed' });
         }
       }
 
-      // 2. Process incoming messages (only if pending and not assigned to a human)
+      // 2. Process incoming messages (strictly ONLY if status is 'pending')
       if (
         payload.event === 'message_created' &&
         payload.message_type === 'incoming' &&
         payload.content
       ) {
-        if (status === 'open' && assigneeId) {
-          console.log(`[Webhook Ignore] Conversación ${conversationId} tiene estado 'open' y está asignada al agente ${assigneeId}. Ignorando bot.`);
-          return res.status(200).json({ status: 'ignored_by_bot' });
+        const config = await configService.getConfig(tenantId);
+
+        // ABSOLUTE HUMAN HANDOVER RULE:
+        // Status 'pending' = AI is Active and handling the customer.
+        // Status 'open', 'resolved', or 'snoozed' = Human operator is in control, UNLESS emergency_ai_mode is ON!
+        if (!config.emergency_ai_mode && status !== 'pending') {
+          console.log(`[AI Ignored] Conversación ${conversationId} en estado '${status}' (Control Humano / Resuelto). La IA NO responderá.`);
+          return res.status(200).json({ status: 'ignored_human_in_control' });
         }
 
         const accountId = payload.account.id;
@@ -270,7 +318,6 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
         const customerPhone = payload.sender?.phone_number || payload.conversation?.meta?.sender?.phone_number || '';
 
         // Check for quick keyword-based escalation
-        const config = await configService.getConfig(tenantId);
         const keywords = (config.escalation_keywords || 'humano,asesor,representante,persona,soporte,operador')
           .split(',')
           .map(kw => kw.trim().toLowerCase())
@@ -510,6 +557,35 @@ app.get('/api/auth/me', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
+// Change Password Endpoint (Allows any logged-in user to change their password)
+app.post('/api/auth/change-password', authenticateToken, async (req: AuthRequest, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: 'Contraseña actual y nueva contraseña requeridas.' });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+  }
+
+  try {
+    const email = req.user!.email;
+    const user = await configService.findUserByEmail(email);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+    const match = await bcrypt.compare(current_password, user.password_hash);
+    if (!match) {
+      return res.status(400).json({ error: 'La contraseña actual ingresada es incorrecta.' });
+    }
+
+    const newHash = await bcrypt.hash(new_password, 10);
+    await configService.updateUserPassword(email, newHash);
+
+    res.json({ success: true, message: '¡Contraseña actualizada con éxito!' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- PHASE 2: CONTROL PLANE & CHANNELS & META TEMPLATES APIS ---
 
 // Get all labels for tenant
@@ -544,6 +620,29 @@ app.delete('/api/control/:tenantId/labels/:title', authenticateToken, async (req
     res.json({ success: true, message: `Etiqueta '${title}' eliminada.` });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Verify Meta Cloud API Credentials
+app.post('/api/control/:tenantId/verify-meta', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { phone_number_id, meta_access_token } = req.body;
+    const result = await controlService.verifyMetaCredentials(phone_number_id, meta_access_token);
+    res.json({ success: true, data: result });
+  } catch (e: any) {
+    res.status(400).json({ error: e.response?.data?.error?.message || e.message });
+  }
+});
+
+// Auto-Provision WhatsApp Channel in Chatwoot with 1-Click
+app.post('/api/control/:tenantId/auto-provision-whatsapp', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const tenantId = req.params.tenantId;
+    const result = await controlService.autoProvisionWhatsApp(tenantId, req.body);
+    res.json(result);
+  } catch (e: any) {
+    res.status(400).json({ error: e.response?.data?.error?.message || e.message });
   }
 });
 
@@ -588,6 +687,71 @@ app.post('/api/control/:tenantId/meta-templates/send', authenticateToken, async 
     const tenantId = req.params.tenantId;
     const { conversation_id, template_name, params } = req.body;
     const result = await controlService.sendMetaTemplate(tenantId, conversation_id, template_name, params || []);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get real-time live analytics BI metrics for tenant
+app.get('/api/control/:tenantId/analytics', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const analytics = await controlService.getAnalytics(tenantId);
+    res.json(analytics);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get all registered tenants (Superadmin feature)
+app.get('/api/control/tenants', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Acceso exclusivo para Super Administradores.' });
+  }
+  try {
+    const tenants = await controlService.getAllTenants();
+    res.json(tenants);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Advisor Home Dashboard Data (KPIs + Overdue + Today + Upcoming followups)
+app.get('/api/control/:tenantId/advisor-dashboard', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const data = await controlService.getAdvisorDashboardData(tenantId, req.user?.email);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Log opportunity follow-up note and schedule next touchpoint
+app.post('/api/control/:tenantId/opportunities/:id/followup', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const { note, next_followup_date, stage } = req.body;
+    if (!note) return res.status(400).json({ error: 'La nota de seguimiento es requerida.' });
+    const result = await controlService.logOpportunityFollowup(tenantId, parseInt(id), {
+      note,
+      next_followup_date,
+      stage,
+      created_by: req.user?.email || 'Asesor'
+    });
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update opportunity details (Edit & Close opportunity)
+app.put('/api/control/:tenantId/opportunities/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const result = await controlService.updateOpportunity(tenantId, parseInt(id), req.body);
     res.json({ success: true, result });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -595,6 +759,45 @@ app.post('/api/control/:tenantId/meta-templates/send', authenticateToken, async 
 });
 
 // --- PHASE 3: LIVE CONVERSATIONS & CUSTOM INBOX APIS ---
+
+// Live Real-Time Server-Sent Events (SSE) Stream
+app.get('/api/control/:tenantId/events', (req, res) => {
+  const tenantId = req.params.tenantId;
+  const token = (req.query.token as string) || (req.headers.authorization?.replace('Bearer ', ''));
+
+  if (!token) {
+    res.status(401).json({ error: 'Token requerido para canal de eventos SSE' });
+    return;
+  }
+
+  try {
+    jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    res.status(403).json({ error: 'Token inválido para canal de eventos SSE' });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  controlService.addSseClient(tenantId, res);
+
+  // Send periodic ping every 25 seconds to keep connection alive
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (e) {
+      clearInterval(pingInterval);
+    }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(pingInterval);
+  });
+});
 
 // List live conversations for tenant
 app.get('/api/control/:tenantId/conversations', authenticateToken, async (req: AuthRequest, res) => {
@@ -620,15 +823,29 @@ app.get('/api/control/:tenantId/conversations/:id/messages', authenticateToken, 
   }
 });
 
-// Send outgoing response or private note
-app.post('/api/control/:tenantId/conversations/:id/messages', authenticateToken, async (req: AuthRequest, res) => {
+// Send outgoing response or private note (supports text and file attachments)
+app.post('/api/control/:tenantId/conversations/:id/messages', authenticateToken, upload.single('file'), async (req: AuthRequest, res) => {
   if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
   try {
     const { tenantId, id } = req.params;
     const { content, is_private } = req.body;
-    if (!content) return res.status(400).json({ error: 'El contenido del mensaje es requerido.' });
+    const file = req.file;
+
+    if (!content && !file) {
+      return res.status(400).json({ error: 'Debes ingresar un mensaje o adjuntar un archivo.' });
+    }
     
-    const message = await controlService.sendMessage(tenantId, id, content, !!is_private);
+    const isPrivate = is_private === 'true' || is_private === true;
+    const message = await controlService.sendMessage(tenantId, id, content || '', isPrivate, file);
+
+    // Auto-assign to logged-in advisor if message is public
+    if (!isPrivate && req.user?.email) {
+      controlService.autoAssignBySenderEmail(tenantId, id, req.user.email).catch(e => console.error('[Auto Assign Error]', e.message));
+    }
+
+    // Broadcast SSE event immediately
+    controlService.broadcastSseEvent(tenantId, 'message_created', { conversation_id: id, message });
+
     res.json({ success: true, message });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -642,6 +859,9 @@ app.post('/api/control/:tenantId/conversations/:id/toggle_status', authenticateT
     const { tenantId, id } = req.params;
     const { status } = req.body;
     const result = await controlService.toggleStatus(tenantId, id, status);
+
+    controlService.broadcastSseEvent(tenantId, 'conversation_updated', { conversation_id: id, status });
+
     res.json({ success: true, result });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -661,14 +881,51 @@ app.post('/api/control/:tenantId/conversations/:id/labels', authenticateToken, a
   }
 });
 
-// Reassign conversation to another agent or team
+// Assign conversation to advisor agent or team
 app.post('/api/control/:tenantId/conversations/:id/assign', authenticateToken, async (req: AuthRequest, res) => {
   if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
   try {
     const { tenantId, id } = req.params;
     const { assignee_id, team_id } = req.body;
-    const result = await controlService.assignConversation(tenantId, id, assignee_id ?? null, team_id ?? null);
+    const result = await controlService.assignConversation(tenantId, id, assignee_id !== undefined ? assignee_id : null, team_id !== undefined ? team_id : null);
     res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Emergency Out-of-Office / Power Outage Global AI Activation (Admins Only)
+app.post('/api/control/:tenantId/activate-global-ai', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Acceso denegado: Esta opción es exclusiva para los administradores del tenant.' });
+  }
+  try {
+    const { tenantId } = req.params;
+    const result = await controlService.activateGlobalAI(tenantId);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/deactivate-global-ai', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Acceso denegado: Esta opción es exclusiva para los administradores del tenant.' });
+  }
+  try {
+    const { tenantId } = req.params;
+    const result = await controlService.deactivateGlobalAI(tenantId);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/control/:tenantId/emergency-status', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const config = await configService.getConfig(tenantId);
+    res.json({ emergency_ai_mode: !!config.emergency_ai_mode });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -681,6 +938,53 @@ app.get('/api/control/:tenantId/contacts', authenticateToken, async (req: AuthRe
     const page = parseInt(req.query.page as string || '1');
     const result = await controlService.getContacts(tenantId, page);
     res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update contact and custom attributes
+app.put('/api/control/:tenantId/contacts/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    const result = await controlService.updateContact(tenantId, parseInt(id), req.body);
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Saved Contact Lists (Listas de Seguimiento)
+app.get('/api/control/:tenantId/contact-lists', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const lists = await controlService.getSavedLists(tenantId);
+    res.json(lists);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/contact-lists', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId } = req.params;
+    const { name, filter_query, contact_ids } = req.body;
+    if (!name) return res.status(400).json({ error: 'El nombre de la lista es requerido.' });
+    const list = await controlService.createSavedList(tenantId, name, filter_query || '', contact_ids || []);
+    res.json({ success: true, list });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/control/:tenantId/contact-lists/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  try {
+    const { tenantId, id } = req.params;
+    await controlService.deleteSavedList(tenantId, parseInt(id));
+    res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -770,11 +1074,9 @@ app.get('/api/users', authenticateToken, async (req: AuthRequest, res) => {
     if (role === 'superadmin') {
       const list = await configService.getUsers();
       res.json(list);
-    } else if (role === 'admin' || role === 'readonly') {
+    } else {
       const list = await configService.getUsers(tenantId);
       res.json(list);
-    } else {
-      res.status(403).json({ error: 'Permisos insuficientes.' });
     }
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1302,6 +1604,71 @@ Reglas y directrices:
     console.error('[Seed Error] Error ejecutando la inicialización:', err);
   }
 }
+
+// --- CRM TEAMS ENDPOINTS ---
+app.get('/api/control/:tenantId/teams', authenticateToken, async (req: any, res) => {
+  try {
+    const teams = await controlService.getTeams(req.params.tenantId);
+    res.json(teams);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/control/:tenantId/teams', authenticateToken, async (req: any, res) => {
+  try {
+    const team = await controlService.createTeam(req.params.tenantId, req.body);
+    res.status(201).json(team);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/control/:tenantId/teams/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const team = await controlService.updateTeam(req.params.tenantId, parseInt(req.params.id), req.body);
+    res.json(team);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/control/:tenantId/teams/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const deleted = await controlService.deleteTeam(req.params.tenantId, parseInt(req.params.id));
+    res.json(deleted);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- CRM TEAM MEMBERS ENDPOINTS ---
+app.get('/api/control/:tenantId/teams/:teamId/members', authenticateToken, async (req: any, res) => {
+  try {
+    const members = await controlService.getTeamMembers(req.params.tenantId, parseInt(req.params.teamId));
+    res.json(members);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/control/:tenantId/teams/:teamId/members', authenticateToken, async (req: any, res) => {
+  try {
+    const member = await controlService.addTeamMember(req.params.tenantId, parseInt(req.params.teamId), req.body);
+    res.status(201).json(member);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/control/:tenantId/teams/:teamId/members/:memberId', authenticateToken, async (req: any, res) => {
+  try {
+    const deleted = await controlService.removeTeamMember(req.params.tenantId, parseInt(req.params.teamId), parseInt(req.params.memberId));
+    res.json(deleted);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('*', (req, res) => {
   res.sendFile(path.resolve(frontendDistPath, 'index.html'));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface AnalyticsTabProps {
   tenantId: string;
@@ -8,65 +8,70 @@ interface AnalyticsTabProps {
 
 type SubTab = 'executive' | 'crm-pipeline' | 'human-effort' | 'channels' | 'ai-insights';
 
-export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
+export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) => {
   const [subTab, setSubTab] = useState<SubTab>('executive');
   const [dateRange, setDateRange] = useState<'7d' | '30d' | 'all'>('30d');
 
-  // Metrics state for demonstration & dynamic calculation
-  const [metrics] = useState({
-    totalConversations: 1248,
-    activeConversations: 42,
-    closedConversations: 1206,
-    aiHandledCount: 980,
-    humanHandledCount: 268,
-    aiAutonomyRate: 78.5,
-    hoursSaved: 163,
-    csatScore: 4.8,
-    csatResponseRate: 64,
-    // CRM Pipeline Stages
+  // Live Database Metrics State
+  const [metrics, setMetrics] = useState({
+    totalConversations: 0,
+    activeConversations: 0,
+    closedConversations: 0,
+    aiHandledCount: 0,
+    humanHandledCount: 0,
+    aiAutonomyRate: 100,
+    hoursSaved: 0,
+    csatScore: 0.0,
+    csatResponseRate: 0,
     pipeline: [
-      { id: 'prospecto', label: 'Prospectos / Leads IA', count: 320, value: 45000, color: '#2563eb' },
-      { id: 'interesado', label: 'Interesados en Producto', count: 215, value: 38000, color: '#7c3aed' },
-      { id: 'cotizado', label: 'Cotización Enviada', count: 140, value: 29000, color: '#d97706' },
-      { id: 'cita_agendada', label: 'Cita / Demo Agendada', count: 85, value: 18500, color: '#0284c7' },
-      { id: 'negociacion', label: 'En Negociación', count: 48, value: 12000, color: '#ea580c' },
-      { id: 'ganado', label: 'Ventas Ganadas', count: 180, value: 52000, color: '#059669' },
-      { id: 'perdido', label: 'Ventas Perdidas (Stock/Precio)', count: 60, value: 15000, color: '#dc2626' }
+      { id: 'stage:prospecto', label: '1. Prospectos / Leads IA', count: 0, value: 0, color: '#2563eb' },
+      { id: 'stage:interesado', label: '2. Interesados en Producto', count: 0, value: 0, color: '#7c3aed' },
+      { id: 'stage:cotizado', label: '3. Cotización Enviada', count: 0, value: 0, color: '#d97706' },
+      { id: 'stage:cita', label: '4. Cita / Demo Agendada', count: 0, value: 0, color: '#0284c7' },
+      { id: 'stage:negociacion', label: '5. En Negociación', count: 0, value: 0, color: '#ea580c' },
+      { id: 'stage:ganado', label: '6. Ventas Ganadas', count: 0, value: 0, color: '#059669' },
+      { id: 'stage:perdido', label: '7. Ventas Perdidas', count: 0, value: 0, color: '#dc2626' }
     ],
-    // Human Effort Metrics
     humanEffort: {
-      avgHandleTimeMinutes: 8.4,
-      avgPostEscalationResponseSeconds: 42,
-      humanTypedMessages: 1840,
-      preQualifiedPercentage: 86,
-      agentStats: [
-        { name: 'Jovanela', handled: 84, closed: 80, handleTimeMin: 7.2, typedMsgs: 540, pausesMin: 45, csat: 4.9 },
-        { name: 'Adonis', handled: 76, closed: 72, handleTimeMin: 8.5, typedMsgs: 480, pausesMin: 50, csat: 4.7 },
-        { name: 'Mario Lumbi', handled: 62, closed: 60, handleTimeMin: 9.1, typedMsgs: 410, pausesMin: 30, csat: 4.8 },
-        { name: 'Toribio', handled: 46, closed: 44, handleTimeMin: 8.8, typedMsgs: 310, pausesMin: 40, csat: 4.9 }
-      ]
+      avgHandleTimeMinutes: 0,
+      avgPostEscalationResponseSeconds: 0,
+      humanTypedMessages: 0,
+      preQualifiedPercentage: 0,
+      agentStats: [] as any[]
     },
-    // Channels
     channels: [
-      { name: 'WhatsApp Principal (+505 8888-5707)', count: 840, percentage: 67 },
-      { name: 'WhatsApp Ventas Corporativas', count: 260, percentage: 21 },
-      { name: 'Web Chat Widget (Sitio Web)', count: 148, percentage: 12 }
+      { name: `WhatsApp Principal (${tenantId.toUpperCase()})`, count: 0, percentage: 100 }
     ],
-    // AI Insights
     aiInsights: {
-      topProducts: [
-        { id: 'LAP-HP-450G9', name: 'HP ProBook 450 G9 i5 8GB/512GB', count: 142, stock: 8 },
-        { id: 'LAP-DELL-3540', name: 'Dell Latitude 3540 Core i5 16GB', count: 118, stock: 5 },
-        { id: 'LAP-LENOVO-E16', name: 'Lenovo ThinkPad E16 Ryzen 7', count: 96, stock: 3 },
-        { id: 'LAP-ASUS-I9', name: 'ASUS VivoBook Core i9 16GB', count: 84, stock: 2 }
-      ],
-      lostSalesStock: [
-        { product: 'MacBook Air M2 13"', count: 18, lastRequested: '2026-07-21' },
-        { product: 'Impresora Epson L3250 EcoTank', count: 14, lastRequested: '2026-07-20' },
-        { product: 'Monitor Dell 27" IPS 4K', count: 9, lastRequested: '2026-07-19' }
-      ]
+      topProducts: [] as any[],
+      lostSalesStock: [] as any[]
     }
   });
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch(`/api/control/${tenantId}/analytics`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(prev => ({
+          ...prev,
+          ...data,
+          aiInsights: {
+            topProducts: data.topProducts || [],
+            lostSalesStock: data.lostSalesStock || []
+          }
+        }));
+      }
+    } catch (e) {
+      console.error('Error fetching real analytics:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [tenantId, token]);
 
   return (
     <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
@@ -74,7 +79,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 className="card-title" style={{ margin: 0, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            📊 Centro de Reportes, Informes Ejecutivos & BI ({tenantId.toUpperCase()})
+            <span className="material-symbols-outlined" style={{ fontSize: '1.5rem', color: '#2563eb' }}>analytics</span>
+            Centro de Reportes, Informes Ejecutivos & BI ({tenantId.toUpperCase()})
           </h2>
           <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0 0 0' }}>
             Informes de métricas omnicanal, rendimiento de la IA, auditoría de vendedores y exportación de datos.
@@ -100,7 +106,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
               boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)'
             }}
           >
-            📥 Exportar Informe (PDF/CSV)
+            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>download</span>
+            Exportar Informe (PDF/CSV)
           </button>
 
           {/* Date Filter */}
@@ -181,7 +188,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
             gap: '0.4rem'
           }}
         >
-          📈 Dashboard Ejecutivo & ROI IA
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>trending_up</span>
+          Dashboard Ejecutivo & ROI IA
         </button>
         <button
           onClick={() => setSubTab('crm-pipeline')}
@@ -201,7 +209,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
             gap: '0.4rem'
           }}
         >
-          🏷️ Pipeline CRM de Ventas (Labels)
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>label</span>
+          Pipeline CRM de Ventas (Labels)
         </button>
         <button
           onClick={() => setSubTab('human-effort')}
@@ -221,7 +230,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
             gap: '0.4rem'
           }}
         >
-          🏋️‍♂️ Esfuerzo del Agente Humano
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>badge</span>
+          Esfuerzo del Agente Humano
         </button>
         <button
           onClick={() => setSubTab('channels')}
@@ -241,7 +251,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
             gap: '0.4rem'
           }}
         >
-          📱 Rendimiento por Canal
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>smartphone</span>
+          Rendimiento por Canal
         </button>
         <button
           onClick={() => setSubTab('ai-insights')}
@@ -261,7 +272,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
             gap: '0.4rem'
           }}
         >
-          💡 Oportunidades & Inventario
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>lightbulb</span>
+          Oportunidades & Inventario
         </button>
       </div>
 
@@ -273,7 +285,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
             <div style={{ padding: '1.25rem', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px' }}>
               <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Conversaciones Totales</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#2563eb', margin: '0.25rem 0' }}>{metrics.totalConversations.toLocaleString()}</div>
-              <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700 }}>⚡ {metrics.activeConversations} activas en este momento</span>
+              <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>bolt</span>
+                {metrics.activeConversations} activas en este momento
+              </span>
             </div>
 
             <div style={{ padding: '1.25rem', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '12px' }}>
@@ -290,109 +305,77 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
 
             <div style={{ padding: '1.25rem', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px' }}>
               <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Satisfacción CSAT</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#d97706', margin: '0.25rem 0' }}>⭐ {metrics.csatScore} / 5.0</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#d97706', margin: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: '#f59e0b' }}>star</span>
+                {metrics.csatScore} / 5.0
+              </div>
               <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{metrics.csatResponseRate}% de respuesta de clientes</span>
             </div>
           </div>
 
           {/* Visual AI vs Human Split Progress Bar */}
           <div style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c' }}>🤖 Distribución de Atención: IA vs. Agentes Humanos</h4>
-            <div style={{ height: '24px', borderRadius: '12px', backgroundColor: '#e5e7eb', overflow: 'hidden', display: 'flex' }}>
-              <div style={{ width: `${metrics.aiAutonomyRate}%`, backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', color: '#fff' }}>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ color: '#2563eb' }}>smart_toy</span>
+              Distribución de Atención: IA vs. Agentes Humanos
+            </h4>
+
+            <div style={{ height: '24px', backgroundColor: '#e2e8f0', borderRadius: '12px', overflow: 'hidden', display: 'flex', marginBottom: '0.75rem' }}>
+              <div style={{ width: `${metrics.aiAutonomyRate}%`, backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
                 IA ({metrics.aiAutonomyRate}%)
               </div>
-              <div style={{ width: `${100 - metrics.aiAutonomyRate}%`, backgroundColor: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', color: '#fff' }}>
-                Humano ({(100 - metrics.aiAutonomyRate).toFixed(1)}%)
+              <div style={{ width: `${100 - metrics.aiAutonomyRate}%`, backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                Humanos ({(100 - metrics.aiAutonomyRate).toFixed(1)}%)
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
-              <span>🟢 {metrics.aiHandledCount} Atendidas por IA</span>
-              <span>🔵 {metrics.humanHandledCount} Atendidas por Asesores Humanos</span>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b' }}>
+              <span>🤖 Resueltos por IA: <strong>{metrics.aiHandledCount}</strong></span>
+              <span>👤 Transferidos a Agentes: <strong>{metrics.humanHandledCount}</strong></span>
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB 2: CRM PIPELINE (KANBAN & STAGES) */}
+      {/* TAB 2: CRM PIPELINE */}
       {subTab === 'crm-pipeline' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <div style={{ padding: '1rem', backgroundColor: '#f5f3ff', borderRadius: '10px', border: '1px solid #ddd6fe' }}>
-            <h4 style={{ margin: '0 0 0.4rem 0', color: '#7c3aed', fontSize: '0.95rem' }}>🏷️ Pipeline CRM impulsado por Etiquetas de Chatwoot (`stage:*`)</h4>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', lineHeight: 1.4 }}>
-              Las conversaciones cambian de etapa automáticamente cuando la IA cotiza productos o agenda citas, o manualmente cuando un vendedor actualiza la etiqueta del chat.
-            </p>
-          </div>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c' }}>Pipeline de Conversión CRM (Valor Monetario por Etapa)</h4>
 
-          {/* Kanban Columns Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', overflowX: 'auto' }}>
-            {metrics.pipeline.map((stage) => (
-              <div
-                key={stage.id}
-                style={{
-                  padding: '1rem',
-                  backgroundColor: '#f8fafc',
-                  borderRadius: '12px',
-                  border: `1px solid ${stage.color}40`,
-                  borderTop: `4px solid ${stage.color}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.75rem'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: stage.color }}>{stage.label}</span>
-                  <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', backgroundColor: `${stage.color}15`, color: stage.color, borderRadius: '4px', fontWeight: 'bold' }}>
-                    {stage.count}
-                  </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {metrics.pipeline.map(stage => (
+              <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.85rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
+                <div style={{ width: '220px', fontSize: '0.85rem', fontWeight: 'bold', color: stage.color }}>
+                  {stage.label}
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#0b2b4c' }}>
-                  C$ {stage.value.toLocaleString()}
+
+                <div style={{ flex: 1, backgroundColor: '#e5e7eb', height: '18px', borderRadius: '9px', overflow: 'hidden' }}>
+                  <div style={{ width: `${(stage.count / 320) * 100}%`, backgroundColor: stage.color, height: '100%', borderRadius: '9px', transition: 'width 0.5s' }}></div>
                 </div>
-                <div style={{ height: '5px', borderRadius: '3px', backgroundColor: '#e5e7eb', overflow: 'hidden' }}>
-                  <div style={{ width: `${Math.min(100, (stage.count / 350) * 100)}%`, height: '100%', backgroundColor: stage.color }}></div>
+
+                <div style={{ width: '100px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 'bold', color: '#0b2b4c' }}>
+                  {stage.count} leads
+                </div>
+
+                <div style={{ width: '130px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 'bold', color: '#059669' }}>
+                  ${stage.value.toLocaleString()} USD
                 </div>
               </div>
             ))}
           </div>
-
-          {/* Conversion Funnel Summary */}
-          <div style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c' }}>🎯 Métricas de Conversión del Embudo de Ventas</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', fontSize: '0.85rem' }}>
-              <div>
-                <span style={{ color: '#64748b' }}>Tasa de Conversión Prospecto ➡️ Venta:</span>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#059669', marginTop: '0.2rem' }}>56.2%</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Duración Promedio del Ciclo:</span>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#2563eb', marginTop: '0.2rem' }}>1.4 días</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b' }}>Principal Motivo de Pérdida:</span>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#dc2626', marginTop: '0.2rem' }}>Falta de Stock (62%)</div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* TAB 3: HUMAN EFFORT METRICS */}
+      {/* TAB 3: HUMAN EFFORT */}
       {subTab === 'human-effort' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <div style={{ padding: '1rem', backgroundColor: '#ecfdf5', borderRadius: '10px', border: '1px solid #a7f3d0' }}>
-            <h4 style={{ margin: '0 0 0.4rem 0', color: '#059669', fontSize: '0.95rem' }}>🏋️‍♂️ Medición de Esfuerzo Exclusivo del Vendedor Humano</h4>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', lineHeight: 1.4 }}>
-              Los contadores de atención humana inician únicamente cuando la IA transfiere la conversación a un vendedor. No incluye los minutos que el bot estuvo conversando con el cliente.
-            </p>
-          </div>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c' }}>Auditoría de Desempeño y Esfuerzo de Vendedores</h4>
 
-          {/* Effort Summary KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Tiempo Promedio de Atención Humana</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>T. Promedio de Atención</span>
               <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#059669', margin: '0.2rem 0' }}>{metrics.humanEffort.avgHandleTimeMinutes} min</div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Desde escalamiento hasta resolución</span>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Por conversación tras escalamiento</span>
             </div>
 
             <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
@@ -429,7 +412,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
                     <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: '#059669' }}>{agent.handleTimeMin} min</td>
                     <td style={{ padding: '0.85rem', textAlign: 'center', fontFamily: 'monospace', color: '#0b2b4c' }}>{agent.typedMsgs} msgs</td>
                     <td style={{ padding: '0.85rem', textAlign: 'center', color: '#64748b' }}>{agent.pausesMin} min</td>
-                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: '#d97706' }}>⭐ {agent.csat}</td>
+                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: '#d97706' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '0.9rem', verticalAlign: 'middle', marginRight: '2px', color: '#f59e0b' }}>star</span>
+                      {agent.csat}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -441,7 +427,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
       {/* TAB 4: CHANNELS */}
       {subTab === 'channels' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c' }}>📱 Volumen y Proporción por Canal de Atención</h4>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span className="material-symbols-outlined" style={{ color: '#2563eb' }}>smartphone</span>
+            Volumen y Proporción por Canal de Atención
+          </h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
             {metrics.channels.map((channel, idx) => (
               <div key={idx} style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
@@ -462,7 +451,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
           {/* Top Products Requested */}
           <div style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c' }}>🔥 Laptops y Productos Más Consultados</h4>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ color: '#ea580c' }}>trending_up</span>
+              Laptops y Productos Más Consultados
+            </h4>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                 <thead>
@@ -489,7 +481,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId }) => {
 
           {/* Lost Sales because of Stock = 0 */}
           <div style={{ padding: '1.25rem', backgroundColor: '#fef2f2', borderRadius: '12px', border: '1px solid #fecaca' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: '#dc2626' }}>⚠️ Ventas Perdidas por Falta de Stock (`stock = 0`)</h4>
+            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ color: '#dc2626' }}>warning</span>
+              Ventas Perdidas por Falta de Stock (`stock = 0`)
+            </h4>
             <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
               Productos buscados por los clientes en WhatsApp que no tenían unidades disponibles en inventario.
             </p>

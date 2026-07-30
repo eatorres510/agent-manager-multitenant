@@ -22,6 +22,11 @@ export interface AgentConfig {
   escalation_instructions?: string;
   allow_ai_escalation?: boolean;
   escalation_team_id?: number;
+  emergency_ai_mode?: boolean;
+  phone_number_id?: string;
+  waba_id?: string;
+  meta_access_token?: string;
+  meta_app_id?: string;
 }
 
 export interface User {
@@ -125,6 +130,7 @@ class ConfigService {
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS escalation_instructions TEXT DEFAULT ''`);
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS allow_ai_escalation BOOLEAN DEFAULT true`);
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS escalation_team_id INTEGER DEFAULT NULL`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS emergency_ai_mode BOOLEAN DEFAULT false`);
 
       // 4. Conversation logs table
       await client.query(`
@@ -292,6 +298,14 @@ class ConfigService {
     return res.rows[0] || null;
   }
 
+  async updateUserPassword(email: string, passwordHash: string): Promise<void> {
+    await this.init();
+    await this.pool.query(
+      'UPDATE users SET password_hash = $1 WHERE email = $2',
+      [passwordHash, email]
+    );
+  }
+
   async getUsers(tenantId?: string): Promise<Omit<User, 'password_hash'>[]> {
     await this.init();
     if (tenantId) {
@@ -419,10 +433,19 @@ class ConfigService {
     }));
   }
 
-  async searchLocalProducts(tenantId: string, query: string, limit: number = 3): Promise<Product[]> {
+  async searchLocalProducts(tenantId: string, query: string, limit: number = 6): Promise<Product[]> {
     await this.init();
-    // Split query into words to do a multi-word search (keep words of 2 or more characters like HP, LG)
-    const words = query.split(/\s+/).filter(w => w.length >= 2);
+    const cleanQuery = (query || '').toString().toLowerCase().trim();
+    
+    // Check if user is asking for POS / Punto de Venta / Farmacias / Abarroterías
+    const isPOSQuery = cleanQuery.includes('pos') || cleanQuery.includes('punto') || cleanQuery.includes('farmacia') || cleanQuery.includes('abarroter') || cleanQuery.includes('caja');
+
+    let words = cleanQuery.split(/\s+/).filter(w => w.length >= 2 && w !== 'para' && w !== 'con' && w !== 'que' && w !== 'los' && w !== 'las' && w !== 'una' && w !== 'del');
+    
+    if (isPOSQuery && !words.includes('laptop') && !words.includes('impresora')) {
+      words.push('laptop', 'escritorio', 'impresora', 'punto');
+    }
+
     let sql = 'SELECT * FROM products WHERE tenant_id = $1';
     const params: any[] = [tenantId];
     
@@ -433,22 +456,23 @@ class ConfigService {
         const pNum = idx + 2;
         return `(name ILIKE $${pNum} OR description ILIKE $${pNum} OR category ILIKE $${pNum} OR brand ILIKE $${pNum})`;
       });
-      sql += clauses.join(' AND ');
+      // Use OR matching if POS query or multiple terms so available options are found
+      sql += clauses.join(isPOSQuery ? ' OR ' : ' OR ');
       sql += ')';
     } else {
-      // Fallback search
-      params.push(`%${query}%`);
+      params.push(`%${cleanQuery}%`);
       sql += ' AND (name ILIKE $2 OR description ILIKE $2 OR category ILIKE $2 OR brand ILIKE $2)';
     }
 
-    let orderBy = ' ORDER BY ';
+    // Prioritize AVAILABLE STOCK (stock > 0) first, then relevancy score, then name
+    let orderBy = ' ORDER BY (CASE WHEN stock > 0 THEN 1 ELSE 0 END) DESC, ';
     if (words.length > 0) {
       const matchScore = words.map((w, idx) => {
         const pNum = idx + 2;
         return `
           (CASE 
-            WHEN category ILIKE $${pNum} AND category NOT ILIKE '%repuesto%' AND category NOT ILIKE '%servicio%' AND category NOT ILIKE '%accesorio%' THEN 10
-            WHEN name ILIKE $${pNum} AND category NOT ILIKE '%repuesto%' AND category NOT ILIKE '%servicio%' AND category NOT ILIKE '%accesorio%' THEN 5
+            WHEN category ILIKE $${pNum} AND category NOT ILIKE '%repuesto%' AND category NOT ILIKE '%servicio%' THEN 10
+            WHEN name ILIKE $${pNum} AND category NOT ILIKE '%repuesto%' AND category NOT ILIKE '%servicio%' THEN 5
             WHEN category ILIKE $${pNum} THEN 2
             WHEN name ILIKE $${pNum} THEN 1
             ELSE 0 
@@ -456,8 +480,6 @@ class ConfigService {
         `;
       }).join(' + ');
       orderBy += `(${matchScore}) DESC, `;
-    } else {
-      orderBy += `(CASE WHEN category ILIKE '%repuesto%' OR category ILIKE '%servicio%' OR category ILIKE '%accesorio%' THEN 0 ELSE 1 END) DESC, `;
     }
     orderBy += 'stock DESC, name ASC';
 
@@ -465,10 +487,21 @@ class ConfigService {
     params.push(limit);
 
     const res = await this.pool.query(sql, params);
-    return res.rows.map(r => ({
+    let rows = res.rows.map(r => ({
       ...r,
       price: parseFloat(r.price)
     }));
+
+    // Fallback if 0 rows found: return available laptops / desktops / printers
+    if (rows.length === 0) {
+      const fallbackRes = await this.pool.query(
+        'SELECT * FROM products WHERE tenant_id = $1 AND stock > 0 ORDER BY stock DESC, name ASC LIMIT $2',
+        [tenantId, limit]
+      );
+      rows = fallbackRes.rows.map(r => ({ ...r, price: parseFloat(r.price) }));
+    }
+
+    return rows;
   }
 
   // Log management per tenant

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
 import { configService, AgentConfig } from './config.service.js';
+import { controlService } from './control.service.js';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -40,7 +41,7 @@ const geminiGetFaqInfoTool = {
 
 const geminiGetBusinessInfoTool = {
   name: 'get_business_info',
-  description: 'Obtiene las ubicaciones físicas de las sucursales, los horarios de atención y el estado actual de la tienda.',
+  description: 'INVOLUCRA OBLIGATORIAMENTE ESTA HERRAMIENTA cuando el cliente pregunte por la ubicación, dirección, sucursal, dónde están ubicados o cómo llegar.',
   parameters: {
     type: 'OBJECT' as any,
     properties: {},
@@ -91,6 +92,29 @@ const geminiBookAppointmentTool = {
     },
     required: ['date', 'time', 'name', 'phone', 'service'],
   },
+};
+
+const geminiCreateOpportunityTool = {
+  name: 'create_opportunity',
+  description: 'Registra autónomamente una Oportunidad Comercial en el CRM cuando el cliente muestra intención de compra o solicita cotización.',
+  parameters: {
+    type: 'OBJECT' as any,
+    properties: {
+      title: {
+        type: 'STRING' as any,
+        description: 'Título descriptivo de la oportunidad comercial (ej: "Cotización de 5 Laptops ASUS Vivobook").'
+      },
+      value: {
+        type: 'NUMBER' as any,
+        description: 'Monto estimado en USD ($) de la compra.'
+      },
+      notes: {
+        type: 'STRING' as any,
+        description: 'Detalle de los productos solicitados y notas de seguimiento.'
+      }
+    },
+    required: ['title']
+  }
 };
 
 const geminiEscalateToHumanTool = {
@@ -145,16 +169,18 @@ class AIService {
         geminiGetFaqInfoTool,
         geminiGetBusinessInfoTool,
         geminiCheckAvailabilityTool,
-        geminiBookAppointmentTool
+        geminiBookAppointmentTool,
+        geminiCreateOpportunityTool
       ];
 
       if (config.allow_ai_escalation !== false) {
         functionDeclarations.push(geminiEscalateToHumanTool);
       }
 
+      const teamRules = await controlService.getEscalationPromptRules(tenantId);
       const model = ai.getGenerativeModel({
         model: 'gemini-2.5-flash',
-        systemInstruction: config.system_prompt,
+        systemInstruction: `${config.system_prompt}${teamRules}`,
         tools: [{ functionDeclarations }]
       });
 
@@ -169,19 +195,21 @@ class AIService {
       let response = await model.generateContent({ contents });
       let functionCalls = response.response.functionCalls();
       let shouldEscalate = false;
+      let maxTurns = 5;
 
-      if (functionCalls && functionCalls.length > 0) {
+      while (functionCalls && functionCalls.length > 0 && maxTurns > 0) {
+        maxTurns--;
         const call = functionCalls[0];
         let result = '';
 
-        console.log(`[Gemini Tool Call] AI invocó la función: ${call.name} con argumentos:`, call.args);
+        console.log(`[Gemini Tool Call - Turn ${5 - maxTurns}] AI invocó la función: ${call.name} con argumentos:`, call.args);
 
         if (call.name === 'search_products') {
           const args = call.args as { query: string };
           const products = await configService.searchLocalProducts(tenantId, args.query);
           result = products && products.length > 0 
-            ? products.map(p => `- ID: ${p.id} | Nombre: ${p.name} | Marca: ${p.brand || 'No especificada'} | Categoría: ${p.category || 'No especificada'} | Precio: C$${p.price} + IVA | Stock: ${p.stock > 0 ? 'Disponible' : 'Agotado'} | Enlace: ${p.url || 'No disponible'} | Descripción: ${p.description || ''}`).join('\n')
-            : 'No se encontraron productos coincidentes en el catálogo.';
+            ? products.map(p => `- ID: ${p.id} | Nombre: ${p.name} | Marca: ${p.brand || 'No especificada'} | Categoría: ${p.category || 'No especificada'} | Precio: C$${p.price} + IVA | Stock: ${p.stock > 0 ? 'DISPONIBLE EN STOCK' : 'Agotado'} | Enlace: ${p.url || 'No disponible'} | Descripción: ${p.description || ''}`).join('\n')
+            : 'No se encontraron productos exactamente coincidentes. Se sugiere consultar disponibilidad de laptops o PCs de escritorio.';
           
           if (products && products.length > 0) {
             for (const p of products) {
@@ -200,7 +228,7 @@ class AIService {
           result = `FAQs de la empresa:\n${kb.faqs}\n\nCuentas Bancarias y Métodos de Pago:\n${kb.bank_accounts}\n\nServicios Ofrecidos:\n${kb.services || 'No especificados'}`;
         } else if (call.name === 'get_business_info') {
           const kb = await configService.getKnowledgeBase(tenantId);
-          result = `Sucursales y Ubicación: ${kb.branches}\nHorario Lunes-Viernes: ${kb.mon_fri_start} a ${kb.mon_fri_end}\nHorario Sábados: ${kb.sat_start} a ${kb.sat_end}\nDomingos: ${kb.sun_enabled ? 'Abierto' : 'Cerrado'}\nZona Horaria: ${kb.timezone}`;
+          result = `SUCURSALES Y UBICACIÓN OFICIAL DE LA EMPRESA:\n${kb.branches}\n\nHorario Lunes-Viernes: ${kb.mon_fri_start} a ${kb.mon_fri_end}\nHorario Sábados: ${kb.sat_start} a ${kb.sat_end}\nDomingos: ${kb.sun_enabled ? 'Abierto' : 'Cerrado'}\nZona Horaria: ${kb.timezone}\n\nREGLA OBLIGATORIA: Responde al cliente utilizando la dirección exacta de la sucursal arriba especificada y comparte el enlace de Google Maps disponible en ese texto. NUNCA menciones direcciones que no estén en la base de datos de la empresa.`;
         } else if (call.name === 'check_availability') {
           const args = call.args as { date: string };
           const slots = await configService.getAvailableSlots(tenantId, args.date);
@@ -215,6 +243,25 @@ class AIService {
           } catch (err: any) {
             result = `Error al registrar cita: El horario de las ${args.time} el día ${args.date} ya está ocupado. Por favor consulta la disponibilidad de nuevo y elige otra hora.`;
           }
+        } else if (call.name === 'create_opportunity') {
+          const args = call.args as { title: string; value?: number; notes?: string };
+          try {
+            const opp = await controlService.createOpportunity(tenantId, {
+              contact_name: customerPhone || 'Cliente WhatsApp',
+              contact_phone: customerPhone || '',
+              conversation_id: conversationId,
+              title: args.title || 'Cotización / Intención de Compra',
+              value: args.value || 0,
+              currency: 'USD',
+              stage: 'stage:prospecto',
+              next_action_type: 'llamada',
+              next_action_notes: args.notes || 'Oportunidad generada autónomamente por la IA Sofía'
+            });
+            result = `Oportunidad Comercial "${opp.title}" registrada exitosamente en el CRM con ID ${opp.id}.`;
+            console.log(`[CRM Opportunity Created by AI] Opp ID: ${opp.id} | Title: ${opp.title}`);
+          } catch (err: any) {
+            result = `Error al registrar oportunidad en CRM: ${err.message}`;
+          }
         } else if (call.name === 'escalate_to_human') {
           const args = call.args as { reason: string };
           shouldEscalate = true;
@@ -223,7 +270,9 @@ class AIService {
         }
 
         // Return function output to Gemini context
-        contents.push(response.response.candidates![0].content);
+        if (response.response.candidates && response.response.candidates[0]) {
+          contents.push(response.response.candidates[0].content);
+        }
         contents.push({
           role: 'user',
           parts: [{
@@ -234,17 +283,26 @@ class AIService {
           }]
         });
 
-        const finalResponse = await model.generateContent({ contents });
-        let text = finalResponse.response.text();
-        if (!text) throw new Error('Empty response from Gemini after Tool execution');
-        if (shouldEscalate && !text.includes('[ESCALAR]')) {
-          text += ' [ESCALAR]';
-        }
-        return text;
+        response = await model.generateContent({ contents });
+        functionCalls = response.response.functionCalls();
       }
 
-      const text = response.response.text();
-      if (!text) throw new Error('Empty response from Gemini');
+      let text = response.response.text() || '';
+
+      // CRITICAL SANITIZATION: Remove any raw DSML or XML tool call markup leaks!
+      text = text.replace(/<\|\|.*?\|\|>/gs, '');
+      text = text.replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
+      text = text.replace(/<invoke[\s\S]*?<\/invoke>/gi, '');
+      text = text.replace(/<parameter[\s\S]*?<\/parameter>/gi, '');
+      text = text.trim();
+
+      if (!text) {
+        text = '¿En qué más te puedo colaborar con nuestros equipos y servicios de SICSA Nicaragua?';
+      }
+
+      if (shouldEscalate && !text.includes('[ESCALAR]')) {
+        text += ' [ESCALAR]';
+      }
       return text;
     } catch (e: any) {
       console.error('Error calling Gemini:', e);
@@ -421,7 +479,7 @@ class AIService {
             result = `FAQs de la empresa:\n${kb.faqs}\n\nCuentas Bancarias y Métodos de Pago:\n${kb.bank_accounts}\n\nServicios Ofrecidos:\n${kb.services || 'No especificados'}`;
           } else if (call.function.name === 'get_business_info') {
             const kb = await configService.getKnowledgeBase(tenantId);
-            result = `Sucursales y Ubicación: ${kb.branches}\nHorario Lunes-Viernes: ${kb.mon_fri_start} a ${kb.mon_fri_end}\nHorario Sábados: ${kb.sat_start} a ${kb.sat_end}\nDomingos: ${kb.sun_enabled ? 'Abierto' : 'Cerrado'}\nZona Horaria: ${kb.timezone}`;
+            result = `SUCURSALES Y UBICACIÓN OFICIAL DE LA EMPRESA:\n${kb.branches}\n\nHorario Lunes-Viernes: ${kb.mon_fri_start} a ${kb.mon_fri_end}\nHorario Sábados: ${kb.sat_start} a ${kb.sat_end}\nDomingos: ${kb.sun_enabled ? 'Abierto' : 'Cerrado'}\nZona Horaria: ${kb.timezone}\n\nREGLA OBLIGATORIA: Responde al cliente utilizando la dirección exacta de la sucursal arriba especificada y comparte el enlace de Google Maps disponible en ese texto. NUNCA menciones direcciones que no estén en la base de datos de la empresa.`;
           } else if (call.function.name === 'check_availability') {
             const args = JSON.parse(call.function.arguments) as { date: string };
             const slots = await configService.getAvailableSlots(tenantId, args.date);
