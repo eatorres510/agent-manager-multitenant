@@ -23,6 +23,10 @@ export interface AgentConfig {
   allow_ai_escalation?: boolean;
   escalation_team_id?: number;
   emergency_ai_mode?: boolean;
+  ai_enabled_during_hours?: boolean;
+  ai_enabled_after_hours?: boolean;
+  ai_auto_create_opportunities?: boolean;
+  auto_assign_on_reply?: boolean;
   phone_number_id?: string;
   waba_id?: string;
   meta_access_token?: string;
@@ -131,6 +135,9 @@ class ConfigService {
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS allow_ai_escalation BOOLEAN DEFAULT true`);
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS escalation_team_id INTEGER DEFAULT NULL`);
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS emergency_ai_mode BOOLEAN DEFAULT false`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS ai_enabled_during_hours BOOLEAN DEFAULT false`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS ai_enabled_after_hours BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS ai_auto_create_opportunities BOOLEAN DEFAULT true`);
 
       // 4. Conversation logs table
       await client.query(`

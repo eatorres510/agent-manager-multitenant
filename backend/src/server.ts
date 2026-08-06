@@ -189,25 +189,43 @@ async function escalateConversation(tenantId: string, conversationId: number, ac
       setTimeout(() => botSentMessages.delete(`${tenantId}:${noteRes.data.id}`), 60000);
     }
 
-    // 4. Assign to team and check ONLINE advisor availability (skipping inactive/idle agents)
+    // 4. Assign to team ONLY IF escalation_team_id is explicitly configured and not null
     if (config.escalation_team_id) {
-      console.log(`[Escalation] Verificando asesores activos 'online' en equipo ID: ${config.escalation_team_id}`);
-      const onlineMember = await controlService.getNextRoundRobinAssignee(tenantId, config.escalation_team_id);
+      console.log(`[Escalation] Verificando asignación actual y asesores activos 'online' en equipo ID: ${config.escalation_team_id}`);
       
+      const convDetailRes = await axios.get(
+        `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}`,
+        { headers: { 'api_access_token': config.chatwoot_access_token } }
+      ).catch(() => null);
+
+      const currentAssigneeId = convDetailRes?.data?.meta?.assignee?.id;
       const assignUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/assignments`;
       const assignPayload: any = { team_id: config.escalation_team_id };
-      
-      if (onlineMember) {
-        console.log(`[Escalation Auto-Assign] Asesor activo en línea encontrado: ${onlineMember.user_name} (${onlineMember.user_email})`);
-      } else {
-        console.log(`[Escalation Filter] Todos los asesores están Inactivos/Ausentes. La conversación ingresa a la cola del equipo sin asignar a asesores inactivos.`);
-      }
 
-      await axios.post(
-        assignUrl,
-        assignPayload,
-        { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
-      ).catch(err => console.error(`[Team Assignment Error] Failed to assign team:`, err.response?.data || err.message));
+      if (currentAssigneeId) {
+        console.log(`[Escalation Preserve Assignee] Conservando asesor ya asignado (ID: ${currentAssigneeId}).`);
+        assignPayload.assignee_id = currentAssigneeId;
+        await axios.post(
+          assignUrl,
+          assignPayload,
+          { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+        ).catch(err => console.error(`[Team Assignment Error] Failed to assign team:`, err.response?.data || err.message));
+      } else {
+        const onlineMember = await controlService.getNextRoundRobinAssignee(tenantId, config.escalation_team_id);
+        if (onlineMember) {
+          console.log(`[Escalation Auto-Assign] Asesor activo en línea encontrado: ${onlineMember.user_name} (${onlineMember.user_email})`);
+          assignPayload.assignee_id = onlineMember.user_id || onlineMember.id;
+          await axios.post(
+            assignUrl,
+            assignPayload,
+            { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+          ).catch(err => console.error(`[Team Assignment Error] Failed to assign team:`, err.response?.data || err.message));
+        } else {
+          console.log(`[Escalation Filter] Todos los asesores están Inactivos/Ausentes. Sin sobreescribir asignaciones.`);
+        }
+      }
+    } else {
+      console.log(`[Escalation] Asignación de equipo deshabilitada para tenant '${tenantId}'. Conservando asignación manual.`);
     }
   } catch (err: any) {
     console.error(`[Escalation System Error - Tenant: ${tenantId}]`, err.response?.data || err.message);
@@ -254,8 +272,18 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
       return res.status(204).json({ error: 'Tenant no encontrado.' });
     }
 
+    // Surgically update the affected conversation in cache (instead of clearing all)
+    // This avoids forcing a full Chatwoot API re-fetch on every incoming message
+    const webhookConvId = payload.conversation?.id;
+    if (webhookConvId) {
+      controlService.updateConversationInCache(tenantId, webhookConvId, payload);
+    } else {
+      controlService.clearTenantCache(tenantId);
+    }
+
     // Broadcast SSE live event to connected advisors
     controlService.broadcastSseEvent(tenantId, payload.event || 'update', payload);
+
 
     if (payload.conversation) {
       const conversationId = payload.conversation.id;
@@ -273,6 +301,18 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
         if (!botSentMessages.has(`${tenantId}:${messageId}`)) {
           const sender = payload.sender;
           const senderName = sender?.name || sender?.email || 'agente humano';
+
+          // Anti-loop guard: if already open AND already has assignee, skip processing
+          // This prevents the webhook from re-triggering Human Takeover on every agent reply
+          const currentAssignee = payload.conversation?.meta?.assignee;
+          const conversationLabels: string[] = payload.conversation?.labels || [];
+          const alreadyEscalated = conversationLabels.includes('bot-escalado');
+          if (status === 'open' && currentAssignee && alreadyEscalated) {
+            // Already fully processed — emit SSE and return immediately to break the loop
+            controlService.broadcastSseEvent(tenantId, 'message_created', payload);
+            return res.status(200).json({ status: 'already_open_skip' });
+          }
+
           console.log(`[Handover] Agente humano ${senderName} envió mensaje saliente en conv #${conversationId}. Desactivando IA y auto-asignando.`);
           
           if (status === 'pending') {
@@ -286,30 +326,74 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
             );
           }
 
-          // Auto-assign to the sender!
-          if (sender?.id) {
-            controlService.assignConversation(tenantId, conversationId.toString(), sender.id).catch(e => console.error('[Webhook Auto-Assign Error]', e.message));
-          } else if (sender?.email) {
-            controlService.autoAssignBySenderEmail(tenantId, conversationId.toString(), sender.email).catch(e => console.error('[Webhook Auto-Assign Email Error]', e.message));
+          // Auto-assign to sender ONLY IF conversation has no assignee
+          if (!currentAssignee) {
+            if (sender?.id) {
+              controlService.assignConversation(tenantId, conversationId.toString(), sender.id).catch(e => console.error('[Webhook Auto-Assign Error]', e.message));
+            } else if (sender?.email) {
+              controlService.autoAssignBySenderEmail(tenantId, conversationId.toString(), sender.email).catch(e => console.error('[Webhook Auto-Assign Email Error]', e.message));
+            }
           }
 
           return res.status(200).json({ status: 'handover_processed' });
         }
       }
 
-      // 2. Process incoming messages (strictly ONLY if status is 'pending')
+      // 2. Process incoming messages
       if (
         payload.event === 'message_created' &&
         payload.message_type === 'incoming' &&
         payload.content
       ) {
         const config = await configService.getConfig(tenantId);
+        const kb = await configService.getKnowledgeBase(tenantId);
+        const hours = isWithinWorkingHours(kb);
 
-        // ABSOLUTE HUMAN HANDOVER RULE:
-        // Status 'pending' = AI is Active and handling the customer.
-        // Status 'open', 'resolved', or 'snoozed' = Human operator is in control, UNLESS emergency_ai_mode is ON!
-        if (!config.emergency_ai_mode && status !== 'pending') {
-          console.log(`[AI Ignored] Conversación ${conversationId} en estado '${status}' (Control Humano / Resuelto). La IA NO responderá.`);
+        // ALWAYS broadcast SSE event for all incoming messages so frontend UI updates in real-time!
+        const incomingMsgObj = {
+          id: payload.id || Date.now(),
+          content: payload.content || '',
+          message_type: 0,
+          private: payload.private || false,
+          created_at: payload.created_at || Math.floor(Date.now() / 1000),
+          conversation_id: conversationId,
+          display_id: payload.conversation?.display_id || conversationId,
+          sender: payload.sender || payload.conversation?.meta?.sender || { name: 'Cliente' }
+        };
+        controlService.broadcastSseEvent(tenantId, 'message_created', {
+          conversation_id: conversationId,
+          display_id: payload.conversation?.display_id || conversationId,
+          message: incomingMsgObj
+        });
+
+        const isAfterHours = !hours.isOpen;
+
+        // TENANT-LEVEL AI ACTIVATION DECISION:
+        // 1. Emergency AI Mode = Forced ON 24/7.
+        // 2. Outside Business Hours (!hours.isOpen):
+        //    Controlled by config.ai_enabled_after_hours (Default: TRUE -> AI responds automatically & creates CRM opportunities when closed).
+        // 3. During Business Hours (hours.isOpen):
+        //    Controlled by config.ai_enabled_during_hours (Default: FALSE for SICSA -> Humans handle all chats when open, unless status is explicitly 'pending').
+
+        let shouldAiRespond = false;
+
+        if (config.emergency_ai_mode) {
+          shouldAiRespond = true;
+        } else if (isAfterHours) {
+          shouldAiRespond = config.ai_enabled_after_hours !== false; // Default: true (Active after-hours)
+        } else {
+          // During Business Hours: Controlled strictly by config.ai_enabled_during_hours
+          if (config.ai_enabled_during_hours === true) {
+            shouldAiRespond = true;
+          } else {
+            // Default SICSA Mode: AI is 100% DISABLED during human business hours (Human First).
+            // All incoming chats remain in inbox for human advisors to reply.
+            shouldAiRespond = false;
+          }
+        }
+
+        if (!shouldAiRespond) {
+          console.log(`[AI Ignored - Tenant: ${tenantId}] En horario laboral con IA desactivada para atención humana (Estado: '${status}', Horario: ${hours.isOpen ? 'Abierto' : 'Cerrado'}). SSE Evento Emitido.`);
           return res.status(200).json({ status: 'ignored_human_in_control' });
         }
 
@@ -327,29 +411,47 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
         const matchedKeyword = keywords.find(kw => lowercaseMsg.includes(kw));
         
         if (matchedKeyword) {
-          console.log(`[Webhook Escalation] Palabra clave '${matchedKeyword}' detectada en el mensaje.`);
-          await escalateConversation(
-            tenantId, 
-            conversationId, 
-            accountId, 
-            config, 
-            `Usuario solicitó asistencia humana mediante palabra clave: "${matchedKeyword}"`
-          );
-          // Send a final message to the client
-          const welcomeMessage = "Te estoy transfiriendo con un asesor de servicio en este momento. ¡Un momento, por favor! 😊";
-          const msgUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-          const chatwootRes = await axios.post(
-            msgUrl,
-            { content: welcomeMessage, message_type: 'outgoing' },
-            { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
-          );
-          if (chatwootRes.data && chatwootRes.data.id) {
-            botSentMessages.add(`${tenantId}:${chatwootRes.data.id}`);
-            setTimeout(() => botSentMessages.delete(`${tenantId}:${chatwootRes.data.id}`), 60000);
+          console.log(`[Webhook Escalation] Palabra clave '${matchedKeyword}' detectada en el mensaje. (En Horario: ${hours.isOpen ? 'SÍ' : 'NO'})`);
+          
+          if (hours.isOpen) {
+            await escalateConversation(
+              tenantId, 
+              conversationId, 
+              accountId, 
+              config, 
+              `Usuario solicitó asistencia humana mediante palabra clave: "${matchedKeyword}"`
+            );
+            const welcomeMessage = "Te estoy transfiriendo con un asesor de servicio en este momento. ¡Un momento, por favor! 😊";
+            const msgUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+            const chatwootRes = await axios.post(
+              msgUrl,
+              { content: welcomeMessage, message_type: 'outgoing' },
+              { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+            );
+            if (chatwootRes.data && chatwootRes.data.id) {
+              botSentMessages.add(`${tenantId}:${chatwootRes.data.id}`);
+              setTimeout(() => botSentMessages.delete(`${tenantId}:${chatwootRes.data.id}`), 60000);
+            }
+            await configService.logMessage(tenantId, conversationId.toString(), 'user', userMessage);
+            await configService.logMessage(tenantId, conversationId.toString(), 'assistant', welcomeMessage);
+            return res.status(200).json({ status: 'escalated_via_keyword' });
+          } else {
+            // After-hours keyword handling: inform customer of schedule politely
+            const afterHoursMsg = `Actualmente nos encontramos fuera de nuestro horario de atención humana. Nuestro equipo atiende de Lunes a Viernes (8:00 AM - 5:30 PM) y Sábados (8:00 AM - 12:30 PM). He registrado tu consulta y un asesor te responderá tan pronto abramos. Mientras tanto, ¿en qué más te puedo asistir con información de productos o cotizaciones? 😊`;
+            const msgUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+            const chatwootRes = await axios.post(
+              msgUrl,
+              { content: afterHoursMsg, message_type: 'outgoing' },
+              { headers: { 'Content-Type': 'application/json', 'api_access_token': config.chatwoot_access_token } }
+            );
+            if (chatwootRes.data && chatwootRes.data.id) {
+              botSentMessages.add(`${tenantId}:${chatwootRes.data.id}`);
+              setTimeout(() => botSentMessages.delete(`${tenantId}:${chatwootRes.data.id}`), 60000);
+            }
+            await configService.logMessage(tenantId, conversationId.toString(), 'user', userMessage);
+            await configService.logMessage(tenantId, conversationId.toString(), 'assistant', afterHoursMsg);
+            return res.status(200).json({ status: 'after_hours_keyword_notified' });
           }
-          await configService.logMessage(tenantId, conversationId.toString(), 'user', userMessage);
-          await configService.logMessage(tenantId, conversationId.toString(), 'assistant', welcomeMessage);
-          return res.status(200).json({ status: 'escalated_via_keyword' });
         }
 
         // Process message asynchronously
@@ -534,7 +636,7 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(
       { email: user.email, tenant_id: user.tenant_id, role: user.role },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '8d' }
     );
 
     res.json({ token, tenant_id: user.tenant_id, email: user.email, role: user.role });
@@ -643,6 +745,17 @@ app.post('/api/control/:tenantId/auto-provision-whatsapp', authenticateToken, as
     res.json(result);
   } catch (e: any) {
     res.status(400).json({ error: e.response?.data?.error?.message || e.message });
+  }
+});
+
+// Get agents from Chatwoot for tenant
+app.get('/api/control/:tenantId/agents', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const agents = await controlService.getAgents(tenantId);
+    res.json(agents);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -816,7 +929,8 @@ app.get('/api/control/:tenantId/conversations', authenticateToken, async (req: A
 app.get('/api/control/:tenantId/conversations/:id/messages', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { tenantId, id } = req.params;
-    const messages = await controlService.getConversationMessages(tenantId, id);
+    const before = req.query.before ? String(req.query.before) : undefined;
+    const messages = await controlService.getConversationMessages(tenantId, id, before);
     res.json(messages);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -838,8 +952,9 @@ app.post('/api/control/:tenantId/conversations/:id/messages', authenticateToken,
     const isPrivate = is_private === 'true' || is_private === true;
     const message = await controlService.sendMessage(tenantId, id, content || '', isPrivate, file);
 
-    // Auto-assign to logged-in advisor if message is public
-    if (!isPrivate && req.user?.email) {
+    // Auto-assign to logged-in advisor ONLY IF tenant has auto_assign_on_reply enabled
+    const config = await configService.getConfig(tenantId);
+    if (!isPrivate && req.user?.email && config.auto_assign_on_reply === true) {
       controlService.autoAssignBySenderEmail(tenantId, id, req.user.email).catch(e => console.error('[Auto Assign Error]', e.message));
     }
 
@@ -881,13 +996,49 @@ app.post('/api/control/:tenantId/conversations/:id/labels', authenticateToken, a
   }
 });
 
-// Assign conversation to advisor agent or team
+// Mark conversation as read (update_last_seen)
+app.post('/api/control/:tenantId/conversations/:id/read', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const result = await controlService.markConversationAsRead(tenantId, id);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Assign conversation to advisor agent or team (Restricted to superadmin, admin, supervisor)
 app.post('/api/control/:tenantId/conversations/:id/assign', authenticateToken, async (req: AuthRequest, res) => {
+  const requesterRole = req.user?.role || 'asesor';
+  const allowedRoles = ['superadmin', 'admin', 'supervisor'];
+  if (!allowedRoles.includes(requesterRole)) {
+    return res.status(403).json({ error: 'Permisos insuficientes: Sólo Administradores, Supervisores y Mercadeo pueden asignar vendedores.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    const { assignee_id, team_id, assignee_email } = req.body;
+    const result = await controlService.assignConversation(
+      tenantId, 
+      id, 
+      assignee_id !== undefined ? assignee_id : null, 
+      team_id !== undefined ? team_id : null,
+      assignee_email || null
+    );
+
+    controlService.broadcastSseEvent(tenantId, 'conversation_updated', { conversation_id: id, assignee_id, assignee_email, team_id });
+    res.json({ success: true, result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete or archive conversation
+app.delete('/api/control/:tenantId/conversations/:id', authenticateToken, async (req: AuthRequest, res) => {
   if (req.user?.role === 'readonly') return res.status(403).json({ error: 'Permisos de sólo lectura.' });
   try {
     const { tenantId, id } = req.params;
-    const { assignee_id, team_id } = req.body;
-    const result = await controlService.assignConversation(tenantId, id, assignee_id !== undefined ? assignee_id : null, team_id !== undefined ? team_id : null);
+    const result = await controlService.deleteConversation(tenantId, id);
+    controlService.broadcastSseEvent(tenantId, 'conversation_updated', { conversation_id: id });
     res.json({ success: true, result });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

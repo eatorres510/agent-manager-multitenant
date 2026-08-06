@@ -25,6 +25,7 @@ interface OpportunityModalProps {
   defaultContactName?: string;
   defaultContactPhone?: string;
   defaultConvId?: string;
+  advisorsList?: { id?: number; name: string; email: string; role?: string }[];
 }
 
 export const OpportunityModal: React.FC<OpportunityModalProps> = ({
@@ -34,7 +35,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
   initialData,
   defaultContactName = '',
   defaultContactPhone = '',
-  defaultConvId = ''
+  defaultConvId = '',
+  advisorsList = []
 }) => {
   const [title, setTitle] = useState('');
   const [value, setValue] = useState<number | string>(1000);
@@ -209,10 +211,26 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
             style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
           >
             <option value="Sin Asignar">Sin Asignar (Cola General)</option>
-            <option value="Jovanela">Jovanela (Ventas Corporativas)</option>
-            <option value="Adonis">Adonis (Ventas Corporativas)</option>
-            <option value="Mario Lumbi">Mario Lumbi (Ventas Retail)</option>
-            <option value="Toribio">Toribio (Soporte Técnico)</option>
+            {advisorsList && advisorsList.length > 0 ? (
+              advisorsList
+                .filter(u => {
+                  const e = (u.email || '').toLowerCase();
+                  const n = (u.name || '').toLowerCase();
+                  return !e.includes('platform.local') && !e.includes('erick.torres') && !e.includes('eitserv.tech') && !e.includes('upagency') && !n.includes('erick torres');
+                })
+                .map(adv => (
+                  <option key={adv.id || adv.email} value={adv.name || adv.email.split('@')[0]}>
+                    {adv.name || adv.email.split('@')[0]} ({adv.email})
+                  </option>
+                ))
+            ) : (
+              <>
+                <option value="Jovanela">Jovanela (Ventas Corporativas)</option>
+                <option value="Adonis">Adonis (Ventas Corporativas)</option>
+                <option value="Mario Lumbi">Mario Lumbi (Ventas Retail)</option>
+                <option value="Toribio">Toribio (Soporte Técnico)</option>
+              </>
+            )}
           </select>
         </div>
 

@@ -89,6 +89,66 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [agentStatus, setAgentStatus] = useState<string>('online');
 
+  // Global 401/403 interceptor — automatically logs out and redirects to login
+  // when ANY fetch call in any component receives an expired/invalid token response.
+  React.useEffect(() => {
+    if (!token) return;
+
+    const originalFetch = window.fetch;
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const response = await originalFetch(...args);
+
+      // Only intercept API calls (not CDN, images, SSE streams, etc.)
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url || '';
+      const isApiCall = url.startsWith('/api/') && !url.includes('/sse') && !url.includes('/events');
+
+      if (isApiCall && (response.status === 401 || response.status === 403)) {
+        // Clone response so original caller can still read it
+        const cloned = response.clone();
+        try {
+          const data = await cloned.json();
+          const isTokenError = data?.error?.toLowerCase().includes('token') ||
+            data?.error?.toLowerCase().includes('expirado') ||
+            data?.error?.toLowerCase().includes('inválido') ||
+            data?.error?.toLowerCase().includes('denegado');
+
+          if (isTokenError) {
+            // Clear all auth state and redirect to login
+            localStorage.removeItem('token');
+            localStorage.removeItem('email');
+            localStorage.removeItem('tenant_id');
+            localStorage.removeItem('role');
+            setToken(null);
+            setUserEmail(null);
+            setTenantId(null);
+            setRole(null);
+            // Show alert since toast may not be available
+            alert('⚠️ Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
+          }
+        } catch (_) { /* JSON parse failed — not a token error */ }
+      }
+
+      return response;
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [token]);
+
+  // Sidebar Collapse state (for maximum Inbox workspace width)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(
+    localStorage.getItem('sidebar_collapsed') === 'true'
+  );
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   // Auto-Idle Detection State & Refs
   const [autoIdleMinutes, setAutoIdleMinutes] = useState<number>(10);
   const lastActivityRef = React.useRef<number>(Date.now());
@@ -432,43 +492,7 @@ function App() {
     }
   }, [token, isAutoPolling, activeTab, logLimit]);
 
-  // Load Chatwoot Web Widget dynamically if token is configured
-  useEffect(() => {
-    if (config.chatwoot_url && config.chatwoot_website_token) {
-      console.log('Loading Chatwoot Web SDK widget...');
-      
-      const existingScript = document.getElementById('chatwoot-sdk-script');
-      if (!existingScript) {
-        (function(d,t) {
-          var BASE_URL = config.chatwoot_url;
-          var g = d.createElement(t) as HTMLScriptElement;
-          var s = d.getElementsByTagName(t)[0];
-          g.src = BASE_URL + "/packs/js/sdk.js";
-          g.defer = true;
-          g.async = true;
-          g.id = 'chatwoot-sdk-script';
-          s.parentNode?.insertBefore(g,s);
-          g.onload = function(){
-            (window as any).chatwootSDK.run({
-              websiteToken: config.chatwoot_website_token,
-              baseUrl: BASE_URL
-            });
-          }
-        })(document,"script");
-      } else {
-        try {
-          if ((window as any).chatwootSDK) {
-            (window as any).chatwootSDK.run({
-              websiteToken: config.chatwoot_website_token,
-              baseUrl: config.chatwoot_url
-            });
-          }
-        } catch (e) {
-          console.error('Error re-running Chatwoot SDK:', e);
-        }
-      }
-    }
-  }, [config.chatwoot_url, config.chatwoot_website_token]);
+
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type });
@@ -1055,6 +1079,57 @@ function App() {
     );
   }
 
+  // Helper for rendering navigation items dynamically (collapsed vs expanded)
+  const renderNavItem = (
+    tab: TabType, 
+    icon: string, 
+    label: string, 
+    accentColor: string, 
+    bgRgba: string,
+    onClickExtra?: () => void
+  ) => {
+    const isActive = activeTab === tab;
+
+    return (
+      <button
+        key={tab}
+        type="button"
+        onClick={() => {
+          setActiveTab(tab);
+          if (onClickExtra) onClickExtra();
+        }}
+        title={isSidebarCollapsed ? label : undefined}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+          gap: isSidebarCollapsed ? '0' : '0.65rem',
+          background: isActive ? bgRgba : 'transparent',
+          border: 'none',
+          borderLeft: !isSidebarCollapsed && isActive ? `3px solid ${accentColor}` : '3px solid transparent',
+          color: isActive ? accentColor : '#94a3b8',
+          padding: isSidebarCollapsed ? '0.6rem 0' : '0.55rem 0.75rem',
+          borderRadius: isSidebarCollapsed ? '8px' : '0 8px 8px 0',
+          fontSize: '0.82rem',
+          fontWeight: isActive ? 800 : 600,
+          cursor: 'pointer',
+          textAlign: isSidebarCollapsed ? 'center' : 'left',
+          transition: 'all 0.15s',
+          width: '100%'
+        }}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: isActive ? accentColor : '#94a3b8' }}>
+          {icon}
+        </span>
+        {!isSidebarCollapsed && (
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {label}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   // Render Dashboard
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-main)' }}>
@@ -1068,12 +1143,12 @@ function App() {
 
       {/* Sidebar Navigation */}
       <aside style={{
-        width: '280px',
+        width: isSidebarCollapsed ? '72px' : '280px',
         backgroundColor: '#07162c',
         color: '#f8fafc',
         display: 'flex',
         flexDirection: 'column',
-        padding: '1.25rem 1rem',
+        padding: isSidebarCollapsed ? '1rem 0.4rem' : '1.25rem 1rem',
         borderRight: '1px solid rgba(255, 255, 255, 0.08)',
         position: 'fixed',
         height: '100vh',
@@ -1081,77 +1156,95 @@ function App() {
         top: 0,
         zIndex: 100,
         boxShadow: '6px 0 30px rgba(0,0,0,0.3)',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        overflowX: 'hidden'
       }}>
         {/* Sidebar Header & Branding */}
         <div style={{ 
           display: 'flex', 
           flexDirection: 'column', 
           gap: '0.4rem', 
-          marginBottom: '1.25rem', 
-          paddingBottom: '0.85rem', 
+          marginBottom: '1rem', 
+          paddingBottom: '0.75rem', 
           borderBottom: '1px solid rgba(255,255,255,0.08)' 
         }}>
-          {tenantId === 'sicsa' ? (
-            <div style={{ padding: '0.2rem 0', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
-              <img 
-                src="https://sicsa.com.ni/wp-content/uploads/2023/06/logo-sisca-azul-medium.png" 
-                alt="SICSA Nicaragua Logo" 
-                style={{ 
-                  height: '34px', 
-                  maxWidth: '100%', 
-                  objectFit: 'contain',
-                  filter: 'brightness(0) invert(1)'
-                }} 
-              />
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26" fill="none">
-                <rect x="3" y="8" width="18" height="12" rx="3" fill="#38bdf8"/>
-                <path d="M12 2v6M9 2h6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
-                <circle cx="8" cy="14" r="2" fill="#ffffff"/>
-                <circle cx="16" cy="14" r="2" fill="#ffffff"/>
-              </svg>
-              <div>
-                <h1 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#f8fafc', letterSpacing: '-0.02em' }}>Plataforma IA</h1>
-                <span style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Control Center</span>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between' }}>
+            {!isSidebarCollapsed && (
+              tenantId === 'sicsa' ? (
+                <img 
+                  src="https://sicsa.com.ni/wp-content/uploads/2023/06/logo-sisca-azul-medium.png" 
+                  alt="SICSA Logo" 
+                  style={{ height: '30px', maxWidth: '160px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} 
+                />
+              ) : (
+                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc' }}>Plataforma IA</span>
+              )
+            )}
+
+            {/* Collapse/Expand Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                color: '#38bdf8',
+                borderRadius: '8px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                flexShrink: 0
+              }}
+              title={isSidebarCollapsed ? 'Expandir Menú Principal' : 'Contraer Menú Principal (Ganar espacio para Chats)'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>
+                {isSidebarCollapsed ? 'menu' : 'menu_open'}
+              </span>
+            </button>
+          </div>
+
+          {!isSidebarCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.1rem' }}>
+              <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                PRODUCCIÓN ({tenantId?.toUpperCase()})
+              </span>
+              <span style={{ 
+                fontSize: '0.62rem', 
+                padding: '0.1rem 0.4rem', 
+                backgroundColor: 'rgba(56, 189, 248, 0.15)', 
+                color: '#38bdf8', 
+                borderRadius: '10px',
+                fontWeight: 800,
+                border: '1px solid rgba(56, 189, 248, 0.3)'
+              }}>
+                v2.5
+              </span>
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.1rem' }}>
-            <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              PRODUCCIÓN ({tenantId?.toUpperCase()})
-            </span>
-            <span style={{ 
-              fontSize: '0.62rem', 
-              padding: '0.1rem 0.4rem', 
-              backgroundColor: 'rgba(56, 189, 248, 0.15)', 
-              color: '#38bdf8', 
-              borderRadius: '10px',
-              fontWeight: 800,
-              border: '1px solid rgba(56, 189, 248, 0.3)'
-            }}>
-              v2.5
-            </span>
-          </div>
         </div>
 
         {/* User Profile Card & Agent Status */}
         <div style={{ 
-          padding: '0.85rem', 
+          padding: isSidebarCollapsed ? '0.5rem 0.2rem' : '0.85rem', 
           backgroundColor: 'rgba(255,255,255,0.03)', 
           borderRadius: '12px', 
           marginBottom: '1.25rem',
           border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05)'
+          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: isSidebarCollapsed ? 'center' : 'stretch'
         }}>
-          {/* User Info Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
-              <div style={{ 
-                width: '30px', 
-                height: '30px', 
+          {isSidebarCollapsed ? (
+            <div 
+              style={{ 
+                width: '36px', 
+                height: '36px', 
                 borderRadius: '50%', 
                 backgroundColor: role === 'superadmin' ? '#ef4444' : role === 'admin' ? '#2563eb' : '#10b981',
                 color: '#ffffff',
@@ -1159,164 +1252,175 @@ function App() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontWeight: 800,
-                fontSize: '0.8rem',
-                flexShrink: 0
-              }}>
-                {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
-              </div>
-              <div style={{ overflow: 'hidden' }}>
-                <div style={{ fontSize: '0.76rem', color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {userEmail || 'Asesor'}
-                </div>
-                <div style={{ fontSize: '0.65rem', color: role === 'superadmin' ? '#f87171' : role === 'admin' ? '#60a5fa' : '#34d399', fontWeight: 700 }}>
-                  {role === 'superadmin' ? '👑 Super Admin' : role === 'admin' ? '💼 Admin Tenant' : '🎧 Asesor de Ventas'}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowChangePassModal(true)}
-              title="Cambiar tu contraseña"
-              style={{
-                padding: '0.25rem 0.45rem',
-                borderRadius: '6px',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-                backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                color: '#38bdf8',
-                fontSize: '0.7rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.2rem'
+                fontSize: '0.85rem'
               }}
+              title={`${userEmail || 'Asesor'} (${role}) - ${agentStatus}`}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>key</span>
-              Pass
-            </button>
-          </div>
-
-          {/* Super Admin Tenant Switcher Dropdown */}
-          {role === 'superadmin' && (
-            <div style={{ marginBottom: '0.65rem' }}>
-              <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                Cambiar Tenant (Global):
-              </div>
-              <select
-                value={tenantId || ''}
-                onChange={(e) => {
-                  const newT = e.target.value;
-                  if (newT) {
-                    setTenantId(newT);
-                    localStorage.setItem('tenant_id', newT);
-                    showToast(`¡Cambiado al inquilino ${newT.toUpperCase()}!`);
-                  }
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.4rem 0.5rem',
-                  borderRadius: '6px',
-                  backgroundColor: '#0c2240',
-                  border: '1px solid #3b82f6',
-                  color: '#60a5fa',
-                  fontSize: '0.78rem',
-                  fontWeight: 800,
-                  cursor: 'pointer'
-                }}
-              >
-                {tenants.length > 0 ? (
-                  tenants.map(t => (
-                    <option key={t.tenant_id} value={t.tenant_id}>
-                      🏢 {t.tenant_name || t.tenant_id.toUpperCase()} ({t.tenant_id})
-                    </option>
-                  ))
-                ) : (
-                  <option value={tenantId || 'sicsa'}>🏢 {tenantId?.toUpperCase()}</option>
-                )}
-              </select>
+              {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
             </div>
+          ) : (
+            <>
+              {/* User Info Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                  <div style={{ 
+                    width: '30px', 
+                    height: '30px', 
+                    borderRadius: '50%', 
+                    backgroundColor: role === 'superadmin' ? '#ef4444' : role === 'admin' ? '#2563eb' : '#10b981',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: '0.8rem',
+                    flexShrink: 0
+                  }}>
+                    {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <div style={{ overflow: 'hidden' }}>
+                    <div style={{ fontSize: '0.76rem', color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {userEmail || 'Asesor'}
+                    </div>
+                    <div style={{ fontSize: '0.65rem', color: role === 'superadmin' ? '#f87171' : role === 'admin' ? '#60a5fa' : '#34d399', fontWeight: 700 }}>
+                      {role === 'superadmin' ? '👑 Super Admin' : role === 'admin' ? '💼 Admin Tenant' : '🎧 Asesor de Ventas'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowChangePassModal(true)}
+                  title="Cambiar tu contraseña"
+                  style={{
+                    padding: '0.25rem 0.45rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                    color: '#38bdf8',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.2rem'
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>key</span>
+                  Pass
+                </button>
+              </div>
+
+              {/* Super Admin Tenant Switcher Dropdown */}
+              {role === 'superadmin' && (
+                <div style={{ marginBottom: '0.65rem' }}>
+                  <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                    Cambiar Tenant (Global):
+                  </div>
+                  <select
+                    value={tenantId || ''}
+                    onChange={(e) => {
+                      const newT = e.target.value;
+                      if (newT) {
+                        setTenantId(newT);
+                        localStorage.setItem('tenant_id', newT);
+                        showToast(`¡Cambiado al inquilino ${newT.toUpperCase()}!`);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.4rem 0.5rem',
+                      borderRadius: '6px',
+                      backgroundColor: '#0c2240',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      color: '#38bdf8',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {tenants.map(t => (
+                      <option key={t.tenant_id} value={t.tenant_id}>
+                        🏢 {t.tenant_name || t.tenant_id.toUpperCase()} ({t.tenant_id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Availability Select Dropdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Estado de Disponibilidad:
+                </div>
+                <select
+                  value={agentStatus}
+                  onChange={async (e) => {
+                    const newStatus = e.target.value;
+                    setAgentStatus(newStatus);
+                    try {
+                      await fetch('/api/agent-status', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                      });
+                      showToast(`Estado cambiado a ${newStatus === 'online' ? 'Disponible' : newStatus === 'busy' ? 'Ocupado' : newStatus === 'lunch' ? 'En Almuerzo' : 'Pausa'}`);
+                    } catch (err) {
+                      console.error('Error updating status:', err);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.4rem 0.5rem',
+                    borderRadius: '6px',
+                    backgroundColor: '#0c2240',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: agentStatus === 'online' ? '#34d399' : agentStatus === 'busy' ? '#f87171' : agentStatus === 'idle' ? '#cbd5e1' : '#fbbf24',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    marginBottom: '0.4rem'
+                  }}
+                >
+                  <option value="online">🟢 Disponible (En línea)</option>
+                  <option value="busy">🔴 Ocupado / En Llamada</option>
+                  <option value="lunch">🍱 En Almuerzo</option>
+                  <option value="training">🎓 En Capacitación</option>
+                  <option value="break">☕ En Pausa Corta</option>
+                  <option value="idle">🌙 Ausente (Auto-Idle)</option>
+                </select>
+              </div>
+
+              {/* Auto-Idle Timeout Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+                <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>Inactividad Auto:</span>
+                <select
+                  value={autoIdleMinutes}
+                  onChange={(e) => setAutoIdleMinutes(parseInt(e.target.value))}
+                  style={{
+                    padding: '0.2rem 0.4rem',
+                    borderRadius: '4px',
+                    backgroundColor: '#0c2240',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#38bdf8',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value={5}>5 min</option>
+                  <option value={10}>10 min (Ideal)</option>
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                  <option value={0}>Off</option>
+                </select>
+              </div>
+            </>
           )}
-
-          {/* Agent Availability Status Select */}
-          <div style={{ marginTop: '0.4rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-              <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Estado de Disponibilidad</span>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: agentStatus === 'online' ? '#10b981' : agentStatus === 'busy' ? '#ef4444' : agentStatus === 'idle' ? '#94a3b8' : '#f59e0b',
-                boxShadow: agentStatus === 'online' ? '0 0 8px #10b981' : 'none'
-              }} />
-            </div>
-
-            <select
-              value={agentStatus}
-              onChange={async (e) => {
-                const newStatus = e.target.value;
-                setAgentStatus(newStatus);
-                isAutoIdledRef.current = false;
-                try {
-                  await fetch('/api/agent-status', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ status: newStatus })
-                  });
-                } catch (err) {
-                  console.error('Error updating status:', err);
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: '0.4rem 0.5rem',
-                borderRadius: '6px',
-                backgroundColor: '#0c2240',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: agentStatus === 'online' ? '#34d399' : agentStatus === 'busy' ? '#f87171' : agentStatus === 'idle' ? '#cbd5e1' : '#fbbf24',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                marginBottom: '0.4rem'
-              }}
-            >
-              <option value="online">🟢 Disponible (En línea)</option>
-              <option value="busy">🔴 Ocupado / En Llamada</option>
-              <option value="lunch">🍱 En Almuerzo</option>
-              <option value="training">🎓 En Capacitación</option>
-              <option value="break">☕ En Pausa Corta</option>
-              <option value="idle">🌙 Ausente (Auto-Idle)</option>
-            </select>
-          </div>
-
-          {/* Auto-Idle Timeout Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
-            <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>Inactividad Auto:</span>
-            <select
-              value={autoIdleMinutes}
-              onChange={(e) => setAutoIdleMinutes(parseInt(e.target.value))}
-              style={{
-                padding: '0.2rem 0.4rem',
-                borderRadius: '4px',
-                backgroundColor: '#0c2240',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: '#38bdf8',
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              <option value={5}>5 min</option>
-              <option value={10}>10 min (Ideal)</option>
-              <option value={15}>15 min</option>
-              <option value={30}>30 min</option>
-              <option value={0}>Off</option>
-            </select>
-          </div>
         </div>
 
         {/* Sidebar Nav Links */}
@@ -1330,558 +1434,147 @@ function App() {
         }}>
           
           {/* GROUP 1: OPERACIONES Y VENTAS */}
-          <div
-            onClick={() => toggleGroup('operations')}
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              color: '#38bdf8',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.5rem 0.6rem 0.25rem 0.6rem',
-              marginTop: '0.1rem',
-              cursor: 'pointer',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              userSelect: 'none'
-            }}
-          >
-            <span>Operaciones & Ventas</span>
-            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#38bdf8' }}>
-              {collapsedGroups.operations ? 'chevron_right' : 'expand_more'}
-            </span>
-          </div>
+          {!isSidebarCollapsed && (
+            <div
+              onClick={() => toggleGroup('operations')}
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                color: '#38bdf8',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.5rem 0.6rem 0.25rem 0.6rem',
+                marginTop: '0.1rem',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                userSelect: 'none'
+              }}
+            >
+              <span>Operaciones & Ventas</span>
+              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#38bdf8' }}>
+                {collapsedGroups.operations ? 'chevron_right' : 'expand_more'}
+              </span>
+            </div>
+          )}
 
-          {!collapsedGroups.operations && (
+          {(!collapsedGroups.operations || isSidebarCollapsed) && (
             <>
-              <button
-                onClick={() => setActiveTab('home')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'home' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'home' ? '3px solid #38bdf8' : '3px solid transparent',
-                  color: activeTab === 'home' ? '#38bdf8' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'home' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>home</span>
-                Inicio / Home del Asesor
-              </button>
-
-              <button
-                onClick={() => setActiveTab('inbox')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'inbox' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'inbox' ? '3px solid #10b981' : '3px solid transparent',
-                  color: activeTab === 'inbox' ? '#34d399' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'inbox' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>forum</span>
-                Bandeja En Vivo (Chats)
-              </button>
-
-              <button
-                onClick={() => setActiveTab('kanban')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'kanban' ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'kanban' ? '3px solid #f59e0b' : '3px solid transparent',
-                  color: activeTab === 'kanban' ? '#fbbf24' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'kanban' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>view_kanban</span>
-                Pipeline CRM (Kanban)
-              </button>
-
-              <button
-                onClick={() => setActiveTab('contacts')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'contacts' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'contacts' ? '3px solid #38bdf8' : '3px solid transparent',
-                  color: activeTab === 'contacts' ? '#38bdf8' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'contacts' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>group</span>
-                Directorio de Leads
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('appointments');
-                  fetchAppointments();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'appointments' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'appointments' ? '3px solid #38bdf8' : '3px solid transparent',
-                  color: activeTab === 'appointments' ? '#38bdf8' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'appointments' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>calendar_month</span>
-                Agenda de Citas
-              </button>
+              {renderNavItem('home', 'home', 'Inicio / Home del Asesor', '#38bdf8', 'rgba(56, 189, 248, 0.16)')}
+              {renderNavItem('inbox', 'forum', 'Bandeja En Vivo (Chats)', '#34d399', 'rgba(16, 185, 129, 0.16)')}
+              {renderNavItem('kanban', 'view_kanban', 'Pipeline CRM (Kanban)', '#fbbf24', 'rgba(245, 158, 11, 0.16)')}
+              {renderNavItem('contacts', 'group', 'Directorio de Leads', '#38bdf8', 'rgba(56, 189, 248, 0.16)')}
+              {renderNavItem('appointments', 'calendar_month', 'Agenda de Citas', '#a78bfa', 'rgba(167, 139, 250, 0.16)', fetchAppointments)}
             </>
           )}
 
           {/* GROUP 2: IA Y CONFIGURACIÓN */}
-          <div
-            onClick={() => toggleGroup('ai')}
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              color: '#c084fc',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.65rem 0.6rem 0.25rem 0.6rem',
-              marginTop: '0.2rem',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              cursor: 'pointer',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              userSelect: 'none'
-            }}
-          >
-            <span>Agente IA</span>
-            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#c084fc' }}>
-              {collapsedGroups.ai ? 'chevron_right' : 'expand_more'}
-            </span>
-          </div>
+          {!isSidebarCollapsed && (
+            <div
+              onClick={() => toggleGroup('ai')}
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                color: '#c084fc',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.65rem 0.6rem 0.25rem 0.6rem',
+                marginTop: '0.2rem',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                userSelect: 'none'
+              }}
+            >
+              <span>Agente IA</span>
+              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#c084fc' }}>
+                {collapsedGroups.ai ? 'chevron_right' : 'expand_more'}
+              </span>
+            </div>
+          )}
 
-          {!collapsedGroups.ai && (
+          {(!collapsedGroups.ai || isSidebarCollapsed) && (
             <>
-              <button
-                onClick={() => setActiveTab('settings')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'settings' ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'settings' ? '3px solid #a855f7' : '3px solid transparent',
-                  color: activeTab === 'settings' ? '#c084fc' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'settings' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>smart_toy</span>
-                Ajustes del Agente
-              </button>
-
-              <button
-                onClick={() => setActiveTab('knowledge')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'knowledge' ? 'rgba(168, 85, 247, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'knowledge' ? '3px solid #a855f7' : '3px solid transparent',
-                  color: activeTab === 'knowledge' ? '#c084fc' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'knowledge' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>psychology</span>
-                Base de Conocimiento
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('products');
-                  fetchProducts();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'products' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'products' ? '3px solid #10b981' : '3px solid transparent',
-                  color: activeTab === 'products' ? '#34d399' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'products' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>inventory_2</span>
-                Catálogo de Productos
-              </button>
+              {renderNavItem('settings', 'smart_toy', 'Ajustes del Agente', '#c084fc', 'rgba(168, 85, 247, 0.16)')}
+              {renderNavItem('knowledge', 'psychology', 'Base de Conocimiento', '#c084fc', 'rgba(168, 85, 247, 0.16)')}
+              {renderNavItem('products', 'inventory_2', 'Catálogo de Productos', '#34d399', 'rgba(16, 185, 129, 0.16)', fetchProducts)}
             </>
           )}
 
           {/* GROUP 3: INTELIGENCIA Y REPORTES */}
-          <div
-            onClick={() => toggleGroup('analytics')}
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              color: '#f472b6',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.65rem 0.6rem 0.25rem 0.6rem',
-              marginTop: '0.2rem',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              cursor: 'pointer',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              userSelect: 'none'
-            }}
-          >
-            <span>Informes & Analítica</span>
-            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#f472b6' }}>
-              {collapsedGroups.analytics ? 'chevron_right' : 'expand_more'}
-            </span>
-          </div>
+          {!isSidebarCollapsed && (
+            <div
+              onClick={() => toggleGroup('analytics')}
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                color: '#f472b6',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.65rem 0.6rem 0.25rem 0.6rem',
+                marginTop: '0.2rem',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                userSelect: 'none'
+              }}
+            >
+              <span>Informes & Analítica</span>
+              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#f472b6' }}>
+                {collapsedGroups.analytics ? 'chevron_right' : 'expand_more'}
+              </span>
+            </div>
+          )}
 
-          {!collapsedGroups.analytics && (
+          {(!collapsedGroups.analytics || isSidebarCollapsed) && (
             <>
-              <button
-                onClick={() => {
-                  setActiveTab('analytics');
-                  fetchAnalytics();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'analytics' ? 'rgba(236, 72, 153, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'analytics' ? '3px solid #ec4899' : '3px solid transparent',
-                  color: activeTab === 'analytics' ? '#f472b6' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'analytics' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>analytics</span>
-                Reportes e Informes BI
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('lost-sales');
-                  fetchLostSales();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'lost-sales' ? 'rgba(239, 68, 68, 0.14)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'lost-sales' ? '3px solid #ef4444' : '3px solid transparent',
-                  color: activeTab === 'lost-sales' ? '#f87171' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'lost-sales' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>shopping_cart_checkout</span>
-                Ventas Perdidas
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('chats');
-                  fetchConversations();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'chats' ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'chats' ? '3px solid #f59e0b' : '3px solid transparent',
-                  color: activeTab === 'chats' ? '#fbbf24' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'chats' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>visibility</span>
-                Auditoría de Chats
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('activity');
-                  fetchLogs();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'activity' ? 'rgba(139, 92, 246, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'activity' ? '3px solid #8b5cf6' : '3px solid transparent',
-                  color: activeTab === 'activity' ? '#a78bfa' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'activity' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>vital_signs</span>
-                Bitácora en Vivo
-              </button>
+              {renderNavItem('analytics', 'analytics', 'Reportes e Informes BI', '#f472b6', 'rgba(236, 72, 153, 0.16)', fetchAnalytics)}
+              {renderNavItem('lost-sales', 'shopping_cart_checkout', 'Ventas Perdidas', '#f87171', 'rgba(239, 68, 68, 0.16)', fetchLostSales)}
+              {renderNavItem('chats', 'visibility', 'Auditoría de Chats', '#fbbf24', 'rgba(245, 158, 11, 0.16)', fetchConversations)}
+              {renderNavItem('activity', 'vital_signs', 'Bitácora en Vivo', '#a78bfa', 'rgba(139, 92, 246, 0.16)', fetchLogs)}
             </>
           )}
 
           {/* GROUP 4: CANALES Y ADMINISTRACIÓN */}
-          <div
-            onClick={() => toggleGroup('system')}
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              color: '#2dd4bf',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.65rem 0.6rem 0.25rem 0.6rem',
-              marginTop: '0.2rem',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              cursor: 'pointer',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              userSelect: 'none'
-            }}
-          >
-            <span>Canales & Sistema</span>
-            <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#2dd4bf' }}>
-              {collapsedGroups.system ? 'chevron_right' : 'expand_more'}
-            </span>
-          </div>
+          {!isSidebarCollapsed && (
+            <div
+              onClick={() => toggleGroup('system')}
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                color: '#2dd4bf',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.65rem 0.6rem 0.25rem 0.6rem',
+                marginTop: '0.2rem',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                userSelect: 'none'
+              }}
+            >
+              <span>Canales & Sistema</span>
+              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#2dd4bf' }}>
+                {collapsedGroups.system ? 'chevron_right' : 'expand_more'}
+              </span>
+            </div>
+          )}
 
-          {!collapsedGroups.system && (
+          {(!collapsedGroups.system || isSidebarCollapsed) && (
             <>
-              <button
-                onClick={() => setActiveTab('control-plane')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'control-plane' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'control-plane' ? '3px solid #38bdf8' : '3px solid transparent',
-                  color: activeTab === 'control-plane' ? '#38bdf8' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'control-plane' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>lan</span>
-                Control Plane (Meta)
-              </button>
-
-              <button
-                onClick={() => setActiveTab('webhook')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'webhook' ? 'rgba(20, 184, 166, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'webhook' ? '3px solid #14b8a6' : '3px solid transparent',
-                  color: activeTab === 'webhook' ? '#2dd4bf' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'webhook' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>webhook</span>
-                Conectar Webhook
-              </button>
-
-              <button
-                onClick={() => setActiveTab('teams')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'teams' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'teams' ? '3px solid #38bdf8' : '3px solid transparent',
-                  color: activeTab === 'teams' ? '#38bdf8' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'teams' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>groups</span>
-                Gestión de Equipos (Teams)
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab('users');
-                  fetchUsers();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'users' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'users' ? '3px solid #38bdf8' : '3px solid transparent',
-                  color: activeTab === 'users' ? '#38bdf8' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'users' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>manage_accounts</span>
-                Usuarios y Tokens
-              </button>
-
-              <button
-                onClick={() => setActiveTab('api-docs')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  background: activeTab === 'api-docs' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
-                  border: 'none',
-                  borderLeft: activeTab === 'api-docs' ? '3px solid #10b981' : '3px solid transparent',
-                  color: activeTab === 'api-docs' ? '#34d399' : '#94a3b8',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0 8px 8px 0',
-                  fontSize: '0.82rem',
-                  fontWeight: activeTab === 'api-docs' ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>description</span>
-                Portal de API & Docs
-              </button>
-
-              {role === 'superadmin' && (
-                <button
-                  onClick={() => {
-                    setActiveTab('admin');
-                    fetchTenants();
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.65rem',
-                    background: activeTab === 'admin' ? 'rgba(239, 68, 68, 0.16)' : 'transparent',
-                    border: 'none',
-                    borderLeft: activeTab === 'admin' ? '3px solid #ef4444' : '3px solid transparent',
-                    color: activeTab === 'admin' ? '#f87171' : '#94a3b8',
-                    padding: '0.55rem 0.75rem',
-                    borderRadius: '0 8px 8px 0',
-                    fontSize: '0.82rem',
-                    fontWeight: activeTab === 'admin' ? 800 : 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.15s',
-                    marginTop: '0.1rem'
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>admin_panel_settings</span>
-                  Super Admin Global
-                </button>
-              )}
+              {renderNavItem('control-plane', 'lan', 'Control Plane (Meta)', '#38bdf8', 'rgba(56, 189, 248, 0.16)')}
+              {renderNavItem('webhook', 'webhook', 'Conectar Webhook', '#2dd4bf', 'rgba(20, 184, 166, 0.16)')}
+              {renderNavItem('teams', 'groups', 'Gestión de Equipos (Teams)', '#38bdf8', 'rgba(56, 189, 248, 0.16)')}
+              {renderNavItem('users', 'manage_accounts', 'Usuarios y Tokens', '#38bdf8', 'rgba(56, 189, 248, 0.16)', fetchUsers)}
+              {renderNavItem('api-docs', 'api', 'Documentación API', '#34d399', 'rgba(16, 185, 129, 0.16)')}
+              {role === 'superadmin' && renderNavItem('admin', 'admin_panel_settings', 'Super Admin Global', '#ef4444', 'rgba(239, 68, 68, 0.16)', fetchTenants)}
             </>
           )}
         </nav>
@@ -1890,9 +1583,10 @@ function App() {
         <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <button
             onClick={handleLogout}
+            title={isSidebarCollapsed ? 'Cerrar Sesión' : undefined}
             style={{
               width: '100%',
-              padding: '0.6rem 0.85rem',
+              padding: isSidebarCollapsed ? '0.6rem 0' : '0.6rem 0.85rem',
               borderRadius: '8px',
               border: '1px solid rgba(239, 68, 68, 0.3)',
               backgroundColor: 'rgba(239, 68, 68, 0.1)',
@@ -1903,18 +1597,26 @@ function App() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '0.5rem',
+              gap: isSidebarCollapsed ? '0' : '0.5rem',
               transition: 'all 0.2s'
             }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>logout</span>
-            Cerrar Sesión
+            {!isSidebarCollapsed && 'Cerrar Sesión'}
           </button>
         </div>
       </aside>
 
       {/* Main Layout Area */}
-      <div style={{ marginLeft: '280px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', boxSizing: 'border-box' }}>
+      <div style={{
+        marginLeft: isSidebarCollapsed ? '72px' : '280px',
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+        transition: 'margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+      }}>
         {/* Top Header bar (Ultra-compact & Space-efficient) */}
         <header style={{
           background: '#ffffff',
@@ -2977,7 +2679,12 @@ function App() {
                   gap: '1rem'
                 }}>
                   {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'].map((slot) => {
-                    const appt = appointments.find(a => a.appointment_date === selectedDate && a.appointment_time === slot);
+                    const appt = appointments.find(a => {
+                      const apptDateStr = a.appointment_date ? a.appointment_date.split('T')[0] : '';
+                      const slotHour = slot.split(':')[0];
+                      const apptTimeHour = (a.appointment_time || '').split(':')[0];
+                      return apptDateStr === selectedDate && apptTimeHour === slotHour;
+                    });
                     
                     return (
                       <div

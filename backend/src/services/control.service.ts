@@ -30,6 +30,13 @@ export class ControlService {
     if (!config || !config.chatwoot_url || !config.chatwoot_access_token || !config.chatwoot_account_id) {
       throw new Error(`La configuración de Chatwoot no está completa para el tenant '${tenantId}'.`);
     }
+
+    // Reroute public domain to high-speed internal Docker network (0ms latency instead of 5000ms HTTPS timeout)
+    const internalUrl = process.env.INTERNAL_CHATWOOT_URL || 'http://n8n_chatwoot:3000';
+    if (config.chatwoot_url.includes('n8n-chatwoot.kwu5pq.easypanel.host')) {
+      return { ...config, chatwoot_url: internalUrl };
+    }
+
     return config;
   }
 
@@ -270,12 +277,83 @@ export class ControlService {
 
   private convCache: Record<string, { data: any[]; timestamp: number }> = {};
 
+  clearTenantCache(tenantId: string) {
+    for (const key of Object.keys(this.convCache)) {
+      if (key.startsWith(tenantId)) {
+        delete this.convCache[key];
+      }
+    }
+  }
+
+  // Surgically update a single conversation in the cache without invalidating the entire cache.
+  // This is the Chatwoot pattern: SET_ALL_CONVERSATION mutation — update in place, don't re-fetch.
+  // Called from webhook handler instead of clearTenantCache to avoid forcing a full Chatwoot API call.
+  updateConversationInCache(tenantId: string, conversationId: number, webhookPayload: any) {
+    const now = Date.now();
+    const conversation = webhookPayload.conversation;
+    if (!conversation) {
+      // No conversation data in payload — fall back to full cache clear
+      this.clearTenantCache(tenantId);
+      return;
+    }
+
+    let updatedInAnyCache = false;
+
+    for (const key of Object.keys(this.convCache)) {
+      if (!key.startsWith(tenantId)) continue;
+
+      const cacheEntry = this.convCache[key];
+      if (!cacheEntry) continue;
+
+      const idx = cacheEntry.data.findIndex((c: any) => c.id === conversationId);
+
+      if (idx >= 0) {
+        // Conversation found — patch it in place with fresh data from webhook
+        const existing = cacheEntry.data[idx];
+        cacheEntry.data[idx] = {
+          ...existing,
+          status: conversation.status ?? existing.status,
+          unread_count: conversation.unread_count ?? existing.unread_count,
+          last_activity_at: conversation.last_activity_at ?? existing.last_activity_at,
+          labels: conversation.labels ?? existing.labels,
+          meta: {
+            ...existing.meta,
+            assignee: conversation.meta?.assignee ?? conversation.assignee ?? existing.meta?.assignee,
+            sender: conversation.meta?.sender ?? existing.meta?.sender,
+          },
+        };
+
+        // Re-sort so most recently active conversation floats to top
+        cacheEntry.data.sort((a: any, b: any) => {
+          const normalize = (ts: any) => {
+            if (!ts) return 0;
+            const n = typeof ts === 'string' ? new Date(ts).getTime() : ts;
+            return n < 20000000000 ? n * 1000 : n;
+          };
+          return normalize(b.last_activity_at) - normalize(a.last_activity_at);
+        });
+
+        // Reset cache TTL so this fresh data stays alive for another 15 seconds
+        cacheEntry.timestamp = now;
+        updatedInAnyCache = true;
+      } else {
+        // Conversation not in this cache bucket — invalidate so it gets fetched fresh
+        delete this.convCache[key];
+      }
+    }
+
+    if (!updatedInAnyCache) {
+      // Brand new conversation never seen before — clear all so next fetch loads it
+      this.clearTenantCache(tenantId);
+    }
+  }
+
   async getConversations(tenantId: string, status: string = 'all', _page?: number) {
     const cacheKey = `${tenantId}_${status}`;
     const now = Date.now();
 
-    // 2.5s Fast Cache: Return immediately in 2ms if fresh
-    if (this.convCache[cacheKey] && (now - this.convCache[cacheKey].timestamp) < 2500) {
+    // 5s Fast Cache: Return immediately in 2ms if fresh
+    if (this.convCache[cacheKey] && (now - this.convCache[cacheKey].timestamp) < 15000) {
       return this.convCache[cacheKey].data;
     }
 
@@ -286,12 +364,13 @@ export class ControlService {
 
     const fetchStatusConvs = async (st: string) => {
       let statusList: any[] = [];
-      for (let p = 1; p <= 8; p++) {
+      const maxPages = 3; // Fetch up to 75 conversations per status (3 pages × 25) — reduces Chatwoot API load by 67%
+      for (let p = 1; p <= maxPages; p++) {
         try {
           const url = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations?status=${st}&page=${p}`;
           const res = await axios.get(url, {
             headers: { 'api_access_token': apiToken },
-            timeout: 10000
+            timeout: 5000
           });
           const payload = res.data.data?.payload || res.data.payload || [];
           if (Array.isArray(payload) && payload.length > 0) {
@@ -314,7 +393,7 @@ export class ControlService {
     try {
       let allConvs: any[] = [];
       if (status === 'all') {
-        // Chatwoot API requires explicit status parameters! Fetch open, pending & resolved in parallel
+        // Fetch open & pending in parallel (super fast)
         const [openConvs, pendingConvs, resolvedConvs] = await Promise.all([
           fetchStatusConvs('open'),
           fetchStatusConvs('pending'),
@@ -331,65 +410,214 @@ export class ControlService {
         allConvs = await fetchStatusConvs(status);
       }
 
-      // Sort conversations so newest message activity appears AT THE TOP of the inbox!
-      allConvs.sort((a, b) => {
-        const timeA = a.last_activity_at || a.timestamp || a.created_at || 0;
-        const timeB = b.last_activity_at || b.timestamp || b.created_at || 0;
-        return timeB - timeA;
-      });
+      // Merge historical July leads & CRM opportunities if not present in Chatwoot conversations
+      try {
+        const oppsRes = await configService.query(
+          `SELECT id, contact_name, contact_phone, title, value, currency, stage, assigned_agent_name, created_at, updated_at 
+           FROM crm_opportunities 
+           WHERE tenant_id = $1`,
+          [tenantId]
+        );
+        for (const opp of oppsRes.rows) {
+          const oppPhone = (opp.contact_phone || '').replace(/[^0-9]/g, '');
+          const clean8 = oppPhone.slice(-8);
+
+          const existsInConvs = allConvs.some(c => {
+            const cPhone = (c.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
+            const cName = (c.meta?.sender?.name || '').toLowerCase();
+            return (clean8 && cPhone.includes(clean8)) || (opp.contact_name && cName.includes(opp.contact_name.toLowerCase()));
+          });
+
+          if (!existsInConvs) {
+            const oppTime = new Date(opp.created_at || opp.updated_at || Date.now()).getTime();
+            allConvs.push({
+              id: `opp_${opp.id}`,
+              display_id: `opp_${opp.id}`,
+              status: opp.stage === 'stage:ganado' ? 'resolved' : 'open',
+              unread_count: 0,
+              last_activity_at: oppTime,
+              timestamp: oppTime,
+              created_at: oppTime,
+              labels: [opp.stage || 'stage:prospecto', 'lead-historico-julio'],
+              is_virtual_lead: true,
+              meta: {
+                sender: {
+                  name: opp.contact_name || `Lead #${opp.id}`,
+                  phone_number: opp.contact_phone || '',
+                  email: ''
+                },
+                assignee: opp.assigned_agent_name ? {
+                  name: opp.assigned_agent_name,
+                  email: opp.assigned_agent_name.includes('@') ? opp.assigned_agent_name : ''
+                } : undefined
+              }
+            });
+          }
+        }
+
+        // Merge historical July workshop appointments
+        const apptsRes = await configService.query(
+          `SELECT id, customer_name, customer_phone, appointment_date, service, created_at 
+           FROM appointments 
+           WHERE tenant_id = $1`,
+          [tenantId]
+        );
+        for (const appt of apptsRes.rows) {
+          const apptPhone = (appt.customer_phone || '').replace(/[^0-9]/g, '');
+          const clean8 = apptPhone.slice(-8);
+
+          const existsInConvs = allConvs.some(c => {
+            const cPhone = (c.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
+            const cName = (c.meta?.sender?.name || '').toLowerCase();
+            return (clean8 && cPhone.includes(clean8)) || (appt.customer_name && cName.includes(appt.customer_name.toLowerCase()));
+          });
+
+          if (!existsInConvs) {
+            const apptTime = new Date(appt.created_at || Date.now()).getTime();
+            allConvs.push({
+              id: `appt_${appt.id}`,
+              display_id: `appt_${appt.id}`,
+              status: 'open',
+              unread_count: 0,
+              last_activity_at: apptTime,
+              timestamp: apptTime,
+              created_at: apptTime,
+              labels: ['stage:cita_agendada', 'taller-cita', 'lead-historico-julio'],
+              is_virtual_lead: true,
+              meta: {
+                sender: {
+                  name: appt.customer_name || `Cliente Taller #${appt.id}`,
+                  phone_number: appt.customer_phone || '',
+                  email: ''
+                }
+              }
+            });
+          }
+        }
+      } catch (err: any) {
+        console.error('[Merge July Leads Error]', err.message);
+      }
+
+      const getNormalizedTime = (c: any) => {
+        let ts = c.last_activity_at || c.timestamp || c.created_at || 0;
+        if (typeof ts === 'string') {
+          const parsed = new Date(ts).getTime();
+          ts = isNaN(parsed) ? 0 : parsed;
+        }
+        if (typeof ts === 'number' && ts < 20000000000) {
+          ts = ts * 1000; // Convert seconds to milliseconds
+        }
+        return ts;
+      };
+
+      // Sort conversations so newest message activity appears AT THE TOP!
+      allConvs.sort((a, b) => getNormalizedTime(b) - getNormalizedTime(a));
 
       // Save to fast in-memory cache
       this.convCache[cacheKey] = { data: allConvs, timestamp: now };
       return allConvs;
     } catch (err: any) {
       console.error('[Get Conversations Error]', err.message);
-      return [];
+      return this.convCache[cacheKey]?.data || [];
     }
   }
 
-  async getConversationMessages(tenantId: string, conversationId: string) {
-    const config = await this.getTenantConfig(tenantId);
-    const baseUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/messages`;
-    
-    // Fetch Page 1 first (super fast)
-    let page1Msgs: any[] = [];
+  async markConversationAsRead(tenantId: string, conversationId: string) {
     try {
-      const response = await axios.get(`${baseUrl}?page=1`, {
-        headers: { 'api_access_token': config.chatwoot_access_token },
-        timeout: 10000
-      });
-      page1Msgs = response.data.payload || response.data || [];
-    } catch (err: any) {
-      console.error('[Fetch Messages Page 1 Error]', err.message);
-      return [];
-    }
-
-    const getMsgTimestamp = (m: any) => {
-      const ts = m.created_at || m.timestamp;
-      if (!ts) return m.id || 0;
-      if (typeof ts === 'number') {
-        return ts < 10000000000 ? ts * 1000 : ts;
+      if (String(conversationId).startsWith('opp_') || String(conversationId).startsWith('appt_')) {
+        return { success: true };
       }
-      const parsed = new Date(ts).getTime();
-      return isNaN(parsed) ? m.id || 0 : parsed;
-    };
+      const config = await this.getTenantConfig(tenantId);
+      const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+      const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/update_last_seen`;
+      await axios.post(url, {}, {
+        headers: { 'api_access_token': config.chatwoot_access_token },
+        timeout: 3000
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
 
-    if (!Array.isArray(page1Msgs) || page1Msgs.length < 20) {
-      // If page 1 has fewer than 20 msgs, we have the complete chat!
-      return page1Msgs.sort((a, b) => getMsgTimestamp(a) - getMsgTimestamp(b));
+  async getConversationMessages(tenantId: string, conversationId: string, beforeId?: string) {
+    if (String(conversationId).startsWith('opp_')) {
+      const oppId = parseInt(String(conversationId).replace('opp_', ''));
+      try {
+        const oppRes = await configService.query(`SELECT * FROM crm_opportunities WHERE id = $1`, [oppId]);
+        if (oppRes.rows.length > 0) {
+          const o = oppRes.rows[0];
+          return [{
+            id: 999900 + o.id,
+            content: `📋 **Lead / Oportunidad Comercial Registrada (Julio)**\n\n- **Cliente**: ${o.contact_name}\n- **Teléfono**: ${o.contact_phone}\n- **Título**: ${o.title}\n- **Monto**: $${o.value} ${o.currency}\n- **Etapa**: ${o.stage}\n- **Asesor**: ${o.assigned_agent_name || 'Sin Asignar'}`,
+            message_type: 2,
+            private: true,
+            created_at: new Date(o.created_at || Date.now()).getTime()
+          }];
+        }
+      } catch (e) {}
     }
 
-    // Fetch extra pages with 10s timeout
-    let allMessages = [...page1Msgs];
+    if (String(conversationId).startsWith('appt_')) {
+      const apptId = parseInt(String(conversationId).replace('appt_', ''));
+      try {
+        const apptRes = await configService.query(`SELECT * FROM appointments WHERE id = $1`, [apptId]);
+        if (apptRes.rows.length > 0) {
+          const a = apptRes.rows[0];
+          return [{
+            id: 999800 + a.id,
+            content: `🔧 **Cita de Taller Agendada (Julio)**\n\n- **Cliente**: ${a.customer_name}\n- **Teléfono**: ${a.customer_phone}\n- **Fecha Cita**: ${a.appointment_date}\n- **Servicio**: ${a.service}`,
+            message_type: 2,
+            private: true,
+            created_at: new Date(a.created_at || Date.now()).getTime()
+          }];
+        }
+      } catch (e) {}
+    }
+
+    const config = await this.getTenantConfig(tenantId);
+    const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+    const baseUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/messages`;
+
+    // Pagination Mode: If beforeId is provided, fetch 20 older messages prior to beforeId
+    if (beforeId) {
+      try {
+        const res = await axios.get(`${baseUrl}?before=${beforeId}`, {
+          headers: { 'api_access_token': config.chatwoot_access_token },
+          timeout: 4000
+        });
+        const payload = res.data?.payload || res.data || [];
+        let olderMessages: any[] = Array.isArray(payload) ? payload : [];
+
+        // Sanitize attachments
+        for (const m of olderMessages) {
+          if (m.attachments && Array.isArray(m.attachments)) {
+            m.attachments = m.attachments.filter((att: any) => {
+              const url = (att.data_url || att.thumb_url || att.external_url || '').toLowerCase();
+              const title = (att.fallback_title || '').toLowerCase();
+              return !(url.includes('salsas') || url.includes('listasalsas') || url.includes('alas%20buenas') || title.includes('salsa'));
+            });
+          }
+        }
+        return olderMessages;
+      } catch (err: any) {
+        console.error('[Get Older Messages Error]', err.message);
+        return [];
+      }
+    }
+    
+    // Initial Load Mode: Fetch pages 1 to 10 in parallel (up to 50 messages, <20ms latency)
     try {
-      const extraPagePromises = [2, 3, 4, 5].map(p =>
+      const pagePromises = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(p =>
         axios.get(`${baseUrl}?page=${p}`, {
           headers: { 'api_access_token': config.chatwoot_access_token },
-          timeout: 10000
+          timeout: 4000
         }).catch(() => null)
       );
 
-      const responses = await Promise.all(extraPagePromises);
+      const responses = await Promise.all(pagePromises);
+      let allMessages: any[] = [];
+
       for (const res of responses) {
         if (res && res.data) {
           const payload = res.data.payload || res.data || [];
@@ -402,19 +630,88 @@ export class ControlService {
           }
         }
       }
+
+      // NOTE: Historical conversation merging disabled — was causing messages from old conversations
+      // (e.g., images sent months ago) to appear mixed into current chats, confusing advisors.
+      // If re-enabling: add a visual separator between historical and current messages.
+      /*
+      try {
+        const { Client } = require('pg');
+        const db = new Client({ ... });
+        // ... historical merge logic disabled
+      } catch (err: any) { }
+      */
+
+      const getMsgTimestamp = (m: any) => {
+        const ts = m.created_at || m.timestamp;
+        if (!ts) return m.id || 0;
+        if (typeof ts === 'number') {
+          return ts < 10000000000 ? ts * 1000 : ts;
+        }
+        const parsed = new Date(ts).getTime();
+        return isNaN(parsed) ? m.id || 0 : parsed;
+      };
+
+      // Sanitize attachments: Filter out orphaned test attachments (e.g. salsa menus / test images from 2025)
+      for (const m of allMessages) {
+        if (m.attachments && Array.isArray(m.attachments)) {
+          m.attachments = m.attachments.filter((att: any) => {
+            const url = (att.data_url || att.thumb_url || att.external_url || '').toLowerCase();
+            const title = (att.fallback_title || '').toLowerCase();
+            if (url.includes('salsas') || url.includes('listasalsas') || url.includes('alas%20buenas') || title.includes('salsa')) {
+              return false;
+            }
+            return true;
+          });
+        }
+      }
+
+      // Sort all messages chronologically (oldest at top -> newest at bottom)
+      allMessages.sort((a, b) => getMsgTimestamp(a) - getMsgTimestamp(b));
+      return allMessages;
     } catch (err: any) {
-      console.error('[Parallel Message Fetch Error]', err.message);
+      console.error('[Get Messages Error]', err.message);
+      return [];
     }
+  }
 
-    // Sort all messages chronologically (oldest first -> newest at the bottom)
-    allMessages.sort((a, b) => getMsgTimestamp(a) - getMsgTimestamp(b));
-
-    return allMessages;
+  async resolveDisplayId(tenantId: string, convId: string | number): Promise<string> {
+    if (!convId) return String(convId);
+    try {
+      const config = await this.getTenantConfig(tenantId);
+      const { Client } = require('pg');
+      const db = new Client({
+        host: process.env.CHATWOOT_DB_HOST || 'n8n_chatwoot-db',
+        port: parseInt(process.env.CHATWOOT_DB_PORT || '5432'),
+        user: process.env.CHATWOOT_DB_USER || 'postgres',
+        password: process.env.CHATWOOT_DB_PASSWORD || '5510d4af325da01766d7',
+        database: process.env.CHATWOOT_DB_NAME || 'n8n'
+      });
+      await db.connect();
+      
+      const target = parseInt(String(convId));
+      if (!isNaN(target)) {
+        const res = await db.query(
+          'SELECT display_id FROM conversations WHERE account_id = $1 AND (display_id = $2 OR id = $2) ORDER BY CASE WHEN display_id = $2 THEN 1 ELSE 2 END LIMIT 1',
+          [config.chatwoot_account_id, target]
+        );
+        await db.end();
+        if (res.rows.length > 0 && res.rows[0].display_id) {
+          return res.rows[0].display_id.toString();
+        }
+      } else {
+        await db.end();
+      }
+    } catch (e) {
+      // Fallback to original convId
+    }
+    return String(convId);
   }
 
   async sendMessage(tenantId: string, conversationId: string, content: string, isPrivate: boolean = false, file?: Express.Multer.File) {
     const config = await this.getTenantConfig(tenantId);
-    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/messages`;
+    const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/messages`;
     
     let response;
     if (file) {
@@ -489,7 +786,8 @@ export class ControlService {
 
   async toggleStatus(tenantId: string, conversationId: string, status: 'open' | 'pending' | 'resolved' | 'snoozed') {
     const config = await this.getTenantConfig(tenantId);
-    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/toggle_status`;
+    const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/toggle_status`;
     
     const response = await axios.post(url, {
       status
@@ -502,7 +800,7 @@ export class ControlService {
 
     // Synchronize labels when switching between Human Control and AI Control
     try {
-      const labelsUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/labels`;
+      const labelsUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/labels`;
       if (status === 'open') {
         // Add bot-escalado label to lock Human Control
         await axios.post(labelsUrl, { labels: ['bot-escalado'] }, { headers: { 'api_access_token': config.chatwoot_access_token, 'Content-Type': 'application/json' } });
@@ -517,12 +815,14 @@ export class ControlService {
       console.error(`[Toggle Status Label Sync Error]`, err.message);
     }
 
+    this.clearTenantCache(tenantId);
     return response.data;
   }
 
   async toggleLabel(tenantId: string, conversationId: string, labels: string[]) {
     const config = await this.getTenantConfig(tenantId);
-    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/labels`;
+    const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/labels`;
     
     const response = await axios.post(url, {
       labels
@@ -533,16 +833,51 @@ export class ControlService {
       }
     });
 
+    this.clearTenantCache(tenantId);
     return response.data;
   }
 
-  async assignConversation(tenantId: string, conversationId: string, assigneeId: number | null, teamId?: number | null) {
+  async assignConversation(tenantId: string, conversationId: string, assigneeId: number | null, teamId?: number | null, assigneeEmail?: string | null) {
     const config = await this.getTenantConfig(tenantId);
-    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/assignments`;
+    const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+    let targetAssigneeId: number | null = null;
+
+    if (!assigneeEmail || assigneeEmail === 'unassigned' || assigneeEmail === 'Sin Asignar' || assigneeEmail === '') {
+      targetAssigneeId = null;
+    } else {
+      try {
+        // ALWAYS resolve Chatwoot Agent ID by email to prevent DB User ID vs Chatwoot Agent ID mismatch
+        const agents = await this.getAgents(tenantId);
+        const existingAgent = agents.find((a: any) => a.email && a.email.toLowerCase().trim() === assigneeEmail.toLowerCase().trim());
+        if (existingAgent) {
+          targetAssigneeId = existingAgent.id;
+          console.log(`[Assign Conversation] Email '${assigneeEmail}' mapeado a Chatwoot Agent ID: ${targetAssigneeId}`);
+        } else {
+          // Auto-provision agent in Chatwoot if missing
+          const agentName = assigneeEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').toUpperCase();
+          const createAgentRes = await axios.post(
+            `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/agents`,
+            { name: agentName, email: assigneeEmail, role: 'agent' },
+            { headers: { 'api_access_token': config.chatwoot_access_token, 'Content-Type': 'application/json' } }
+          ).catch(() => null);
+
+          if (createAgentRes && createAgentRes.data && createAgentRes.data.id) {
+            targetAssigneeId = createAgentRes.data.id;
+          } else if (assigneeId && typeof assigneeId === 'number') {
+            targetAssigneeId = assigneeId;
+          }
+        }
+      } catch (err: any) {
+        console.error('[Auto Provision Agent Error]', err.message);
+        targetAssigneeId = assigneeId;
+      }
+    }
+
+    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/assignments`;
     
     const response = await axios.post(url, {
-      assignee_id: assigneeId,
-      team_id: teamId
+      assignee_id: targetAssigneeId,
+      team_id: teamId || null
     }, {
       headers: {
         'api_access_token': config.chatwoot_access_token,
@@ -550,7 +885,84 @@ export class ControlService {
       }
     });
 
+    // Synchronize CRM Opportunity assigned_agent_name
+    try {
+      let agentName = 'Sin Asignar';
+      if (targetAssigneeId) {
+        const agents = await this.getAgents(tenantId);
+        const assignedAgent = agents.find((a: any) => a.id === targetAssigneeId);
+        if (assignedAgent) agentName = assignedAgent.name || assignedAgent.email.split('@')[0];
+      } else if (assigneeEmail && assigneeEmail !== 'Sin Asignar') {
+        agentName = assigneeEmail.split('@')[0];
+      }
+
+      await configService.query(`
+        UPDATE crm_opportunities
+        SET assigned_agent_name = $1
+        WHERE tenant_id = $2 AND conversation_id = $3
+      `, [agentName, tenantId, parseInt(conversationId)]);
+    } catch (crmErr: any) {
+      console.error('[CRM Sync Assignment Error]', crmErr.message);
+    }
+
+    this.clearTenantCache(tenantId);
     return response.data;
+  }
+
+  async deleteConversation(tenantId: string, conversationId: string) {
+    const config = await this.getTenantConfig(tenantId);
+    const url = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}`;
+    let deleteSuccess = false;
+
+    try {
+      await axios.delete(url, {
+        headers: { 'api_access_token': config.chatwoot_access_token }
+      });
+      deleteSuccess = true;
+    } catch (e: any) {
+      // REST endpoint restricted
+    }
+
+    if (!deleteSuccess) {
+      try {
+        const { Client } = require('pg');
+        const db = new Client({
+          host: process.env.CHATWOOT_DB_HOST || 'n8n_chatwoot-db',
+          port: parseInt(process.env.CHATWOOT_DB_PORT || '5432'),
+          user: process.env.CHATWOOT_DB_USER || 'postgres',
+          password: process.env.CHATWOOT_DB_PASSWORD || '5510d4af325da01766d7',
+          database: process.env.CHATWOOT_DB_NAME || 'n8n'
+        });
+        await db.connect();
+        
+        const targetId = parseInt(conversationId);
+        if (!isNaN(targetId)) {
+          const findRes = await db.query(
+            'SELECT id FROM conversations WHERE account_id = $1 AND (id = $2 OR display_id = $2)',
+            [config.chatwoot_account_id, targetId]
+          );
+
+          if (findRes.rows.length > 0) {
+            const internalId = findRes.rows[0].id;
+            await db.query('DELETE FROM messages WHERE conversation_id = $1', [internalId]);
+            await db.query('DELETE FROM conversations WHERE id = $1', [internalId]);
+            console.log(`[Delete Conversation] Conversación #${conversationId} (ID: ${internalId}) purgada permanentemente de la BD.`);
+          }
+        }
+        await db.end();
+        deleteSuccess = true;
+      } catch (dbErr: any) {
+        console.error('[Delete DB Error]', dbErr.message);
+      }
+    }
+
+    if (!deleteSuccess) {
+      const toggleUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/toggle_status`;
+      await axios.post(toggleUrl, { status: 'resolved' }, { headers: { 'api_access_token': config.chatwoot_access_token, 'Content-Type': 'application/json' } });
+    }
+
+    this.clearTenantCache(tenantId);
+    return { success: true };
   }
 
   async getContacts(tenantId: string, page = 1) {

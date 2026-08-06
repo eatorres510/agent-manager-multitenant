@@ -42,7 +42,8 @@ interface ChatMessage {
 }
 
 interface ConversationItem {
-  id: number;
+  id: number | string;
+  display_id?: number | string;
   status: 'open' | 'pending' | 'resolved' | 'snoozed';
   unread_count: number;
   last_activity_at: number;
@@ -70,7 +71,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedConv, setSelectedConv] = useState<ConversationItem | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [activeCategory, setActiveCategory] = useState<'all' | 'assigned' | 'ai' | 'pending' | 'resolved'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'unanswered' | 'assigned' | 'ai' | 'pending' | 'resolved'>('all');
   const [filterOnlyMine, setFilterOnlyMine] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [fetchingConvs, setFetchingConvs] = useState(false);
@@ -82,11 +83,13 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
   useEffect(() => {
     if (token) {
-      // Fetch system users / advisors
+      // Fetch all system advisors from platform DB so all 10+ advisors appear
       fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.json())
         .then(data => {
-          if (Array.isArray(data)) setAdvisorsList(data);
+          if (Array.isArray(data)) {
+            setAdvisorsList(data);
+          }
         })
         .catch(e => console.error('Error fetching system users:', e));
 
@@ -167,6 +170,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const [replyMode, setReplyMode] = useState<'public' | 'private'>('public');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
+  const [loadingOlderMsgs, setLoadingOlderMsgs] = useState(false);
+  const [hasMoreOlderMsgs, setHasMoreOlderMsgs] = useState(true);
 
   // Voice Recording state
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
@@ -175,6 +180,42 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<any>(null);
+
+  // Workshop & Maintenance Appointments for active customer
+  const [customerAppointments, setCustomerAppointments] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (selectedConv) {
+      fetchCustomerAppointments();
+    } else {
+      setCustomerAppointments([]);
+    }
+  }, [selectedConv?.id]);
+
+  const fetchCustomerAppointments = async () => {
+    try {
+      const res = await fetch('/api/appointments', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const phone = selectedConv?.meta?.sender?.phone_number || '';
+          const name = selectedConv?.meta?.sender?.name || '';
+          const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-8);
+
+          const matched = data.filter((a: any) => {
+            const aPhone = (a.customer_phone || '').replace(/[^0-9]/g, '');
+            const aName = (a.customer_name || '').toLowerCase();
+            return (cleanPhone && aPhone.includes(cleanPhone)) || (name && name.length > 2 && aName.includes(name.toLowerCase()));
+          });
+          setCustomerAppointments(matched);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching customer appointments:', err);
+    }
+  };
 
   const getAudioStream = async (): Promise<MediaStream> => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -253,6 +294,63 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       showToast('Grabación de audio cancelada.');
     }
+  };
+
+  // Helpers for Avatar & Design
+  const getInitials = (name?: string) => {
+    if (!name) return 'C';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  };
+
+  const getAvatarBg = (name?: string) => {
+    if (!name) return '#2563eb';
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = Math.abs(hash) % 360;
+    return `hsl(${h}, 65%, 40%)`;
+  };
+
+  const isUnanswered = (c: ConversationItem) => {
+    if (c.status === 'resolved') return false;
+    if (c.unread_count && c.unread_count > 0) return true;
+
+    const cachedMsgs = msgCacheRef.current[c.id.toString()] || c.messages;
+    if (cachedMsgs && cachedMsgs.length > 0) {
+      const lastM = cachedMsgs[cachedMsgs.length - 1];
+      if (lastM) {
+        const isCustomer = lastM.message_type === 0 || (lastM.sender && lastM.sender.type === 'contact');
+        const isAgentOrBot = lastM.message_type === 1 || (lastM.sender && (lastM.sender.type === 'user' || lastM.sender.type === 'agent_bot'));
+        if (isCustomer && !isAgentOrBot) {
+          return true;
+        }
+        return false;
+      }
+    }
+
+    const metaAny = c.meta as any;
+    const lastMsg = metaAny?.last_non_activity_message || metaAny?.last_message;
+    if (lastMsg) {
+      const isCustomer = lastMsg.message_type === 0 || (lastMsg.sender && lastMsg.sender.type === 'contact');
+      const isAgentOrBot = lastMsg.message_type === 1 || (lastMsg.sender && (lastMsg.sender.type === 'user' || lastMsg.sender.type === 'agent_bot'));
+      return isCustomer && !isAgentOrBot;
+    }
+
+    return false;
+  };
+
+  const getSlaWaitTime = (lastActivityAt?: number) => {
+    if (!lastActivityAt) return '';
+    const ts = typeof lastActivityAt === 'number' && lastActivityAt < 2000000000 ? lastActivityAt * 1000 : lastActivityAt;
+    const elapsedMs = Date.now() - ts;
+    if (elapsedMs < 60000) return '⏱️ < 1m';
+    const elapsedMins = Math.floor(elapsedMs / 60000);
+    if (elapsedMins < 60) return `⏱️ ${elapsedMins}m`;
+    const elapsedHours = Math.floor(elapsedMins / 60);
+    return `⏱️ ${elapsedHours}h`;
   };
 
   // Quick Action Popovers & Modals
@@ -483,21 +581,105 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
     }
   };
 
+  const fetchOlderMessages = async () => {
+    if (loadingOlderMsgs || !selectedConvRef.current || messages.length === 0) return;
+    const targetConvId = selectedConvRef.current.id.toString();
+    const oldestMsgId = messages[0]?.id;
+    if (!oldestMsgId) return;
+
+    setLoadingOlderMsgs(true);
+    try {
+      const res = await fetch(`/api/control/${tenantId}/conversations/${targetConvId}/messages?before=${oldestMsgId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const olderList: ChatMessage[] = data;
+
+          const chatContainer = chatContainerRef.current;
+          const prevScrollHeight = chatContainer ? chatContainer.scrollHeight : 0;
+
+          const mergedMap = new Map();
+          olderList.forEach(m => mergedMap.set(m.id, m));
+          messages.forEach(m => mergedMap.set(m.id, m));
+          const mergedList: ChatMessage[] = Array.from(mergedMap.values());
+          mergedList.sort((a, b) => {
+            const getTs = (m: any) => typeof m.created_at === 'number' ? (m.created_at < 10000000000 ? m.created_at * 1000 : m.created_at) : new Date(m.created_at).getTime();
+            return getTs(a) - getTs(b);
+          });
+
+          msgCacheRef.current[targetConvId] = mergedList;
+          setMessages(mergedList);
+
+          requestAnimationFrame(() => {
+            if (chatContainer) {
+              const newScrollHeight = chatContainer.scrollHeight;
+              chatContainer.scrollTop = newScrollHeight - prevScrollHeight;
+            }
+          });
+
+          if (olderList.length < 5) {
+            setHasMoreOlderMsgs(false);
+          }
+        } else {
+          setHasMoreOlderMsgs(false);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching older messages:', err);
+    } finally {
+      setLoadingOlderMsgs(false);
+    }
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if ((!inputMessage.trim() && !selectedFile) || !selectedConv) return;
+
+    // Freeze immutable target conversation references IMMEDIATELY at click time!
+    const targetConv = selectedConv;
+    const targetConvId = selectedConv.id.toString();
+    const textToSend = inputMessage.trim();
+    const isPrivate = replyMode === 'private';
+    const fileToSend = selectedFile;
+
     setSendingMsg(true);
+    setInputMessage('');
+    setSelectedFile(null);
+
+    // Optimistic UI update scoped strictly to target conversation:
+    if (textToSend) {
+      const optimisticMsg: ChatMessage = {
+        id: Date.now(),
+        content: textToSend,
+        message_type: 1,
+        private: isPrivate,
+        created_at: Math.floor(Date.now() / 1000),
+        sender: { name: userEmail ? userEmail.split('@')[0].toUpperCase() : 'COMERCIAL' }
+      };
+
+      // Add to RAM cache for target conversation
+      const existingCache = msgCacheRef.current[targetConvId] || targetConv.messages || [];
+      const updatedCache = [...existingCache, optimisticMsg];
+      msgCacheRef.current[targetConvId] = updatedCache;
+
+      // Update active UI messages state ONLY IF the active conversation matches targetConvId!
+      if (selectedConvRef.current && selectedConvRef.current.id.toString() === targetConvId) {
+        setMessages(updatedCache);
+        setTimeout(() => scrollToBottom('auto'), 20);
+      }
+    }
+
     try {
-      const isPrivate = replyMode === 'private';
       let res;
-
-      if (selectedFile) {
+      if (fileToSend) {
         const formData = new FormData();
-        if (inputMessage.trim()) formData.append('content', inputMessage.trim());
+        if (textToSend) formData.append('content', textToSend);
         formData.append('is_private', isPrivate ? 'true' : 'false');
-        formData.append('file', selectedFile);
+        formData.append('file', fileToSend);
 
-        res = await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/messages`, {
+        res = await fetch(`/api/control/${tenantId}/conversations/${targetConvId}/messages`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -505,14 +687,14 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
           body: formData
         });
       } else {
-        res = await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/messages`, {
+        res = await fetch(`/api/control/${tenantId}/conversations/${targetConvId}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            content: inputMessage,
+            content: textToSend,
             is_private: isPrivate
           })
         });
@@ -521,10 +703,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error enviando mensaje');
 
-      setInputMessage('');
-      setSelectedFile(null);
-      fetchMessages(selectedConv.id.toString(), true);
-      showToast(isPrivate ? 'Nota privada interna guardada' : 'Mensaje y archivo adjunto enviados a WhatsApp');
+      fetchMessages(targetConvId, true);
+      showToast(isPrivate ? 'Nota privada interna guardada' : 'Mensaje enviado exitosamente a WhatsApp');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -550,6 +730,29 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       showToast(`Estado actualizado a '${newStatus === 'open' ? 'Atención por Humano' : newStatus === 'pending' ? 'Atención por IA' : 'Resuelto'}'`);
       fetchConversations();
       fetchMessages(selectedConv.id.toString(), true);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!selectedConv) return;
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar la conversación #${selectedConv.id} de ${selectedConv.meta?.sender?.name || 'este contacto'}?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al eliminar conversación');
+
+      showToast('Conversación eliminada exitosamente');
+      setSelectedConv(null);
+      fetchConversations(true);
     } catch (err: any) {
       showToast(err.message, 'error');
     }
@@ -591,36 +794,148 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       sse.addEventListener('message_created', (e: MessageEvent) => {
         try {
           const payload = JSON.parse(e.data);
-          const convId = payload.conversation_id || payload.conversation?.id || payload.message?.conversation_id;
-          
-          // If event belongs to current active conversation, refresh messages immediately!
-          if (selectedConvRef.current && convId && convId.toString() === selectedConvRef.current.id.toString()) {
-            fetchMessages(selectedConvRef.current.id.toString(), true);
+          const convId = payload.conversation_id || payload.conversation?.id || payload.message?.conversation_id || payload.display_id;
+          const newMsg = payload.message;
+
+          const activeConv = selectedConvRef.current;
+          if (convId && activeConv) {
+            const convIdStr = convId.toString();
+            const isCurrentActive = convIdStr === activeConv.id.toString() || convIdStr === activeConv.display_id?.toString();
+
+            // 1. Direct Real-Time Injection into active open chat window
+            if (isCurrentActive && newMsg && newMsg.content) {
+              const formattedMsg: ChatMessage = {
+                id: newMsg.id || Date.now(),
+                content: newMsg.content,
+                message_type: newMsg.message_type === 'outgoing' || newMsg.message_type === 1 ? 1 : 0,
+                private: !!newMsg.private,
+                created_at: newMsg.created_at || Math.floor(Date.now() / 1000),
+                sender: newMsg.sender || { name: 'Cliente' }
+              };
+
+              setMessages(prev => {
+                if (prev.some(m => m.id === formattedMsg.id)) return prev;
+                return [...prev, formattedMsg];
+              });
+
+              setTimeout(() => scrollToBottom('smooth'), 50);
+
+              // Auto-mark as read if active advisor is viewing the conversation
+              if (token) {
+                fetch(`/api/control/${tenantId}/conversations/${activeConv.id}/read`, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+              }
+            }
           }
 
-          // Resync conversations list silently
-          fetchConversations(true);
+          // 2. Zero-HTTP RAM Update (Chatwoot pattern: SET_ALL_CONVERSATION mutation)
+          // Instead of fetching from server, update the affected conversation in local state directly.
+          // Only falls back to fetchConversations if the conversation is brand new (not in local state yet).
+          if (convId) {
+            const convIdStr = convId.toString();
+            const now = Math.floor(Date.now() / 1000);
+
+            setConversations(prev => {
+              const idx = prev.findIndex(
+                c => c.id.toString() === convIdStr || c.display_id?.toString() === convIdStr
+              );
+
+              if (idx < 0) {
+                // Conversation not in local state yet — trigger a background fetch to load it
+                fetchConversations(true);
+                return prev;
+              }
+
+              const existing = prev[idx];
+              const isCurrentlyViewing = selectedConvRef.current &&
+                (existing.id.toString() === selectedConvRef.current.id.toString());
+
+              // Build updated conversation with new metadata from SSE payload
+              const updatedConv: ConversationItem = {
+                ...existing,
+                last_activity_at: payload.conversation?.last_activity_at || now,
+                // Only increment unread if not currently viewing this conversation
+                unread_count: isCurrentlyViewing ? 0 : (existing.unread_count || 0) + 1,
+                // Preserve messages array and fetched state
+                messages: existing.messages || [],
+                dataFetched: existing.dataFetched || false,
+                allMessagesLoaded: existing.allMessagesLoaded,
+              };
+
+              // Remove from current position and place at top (most recent activity)
+              const updated = [...prev];
+              updated.splice(idx, 1);
+              updated.unshift(updatedConv);
+              return updated;
+            });
+          }
         } catch (err) {
           console.error('[SSE message_created Error]', err);
         }
       });
 
-      sse.addEventListener('conversation_updated', () => {
-        fetchConversations(true);
+      // conversation_updated — patch RAM directly, no HTTP
+      sse.addEventListener('conversation_updated', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const conv = payload.conversation;
+          if (!conv?.id) { fetchConversations(true); return; }
+          const convIdStr = conv.id.toString();
+          setConversations(prev => {
+            const idx = prev.findIndex(c => c.id.toString() === convIdStr || c.display_id?.toString() === convIdStr);
+            if (idx < 0) { fetchConversations(true); return prev; }
+            const existing = prev[idx];
+            const updated = [...prev];
+            updated[idx] = {
+              ...existing,
+              status: conv.status ?? existing.status,
+              labels: conv.labels ?? existing.labels,
+              last_activity_at: conv.last_activity_at ?? existing.last_activity_at,
+              meta: {
+                ...existing.meta,
+                assignee: conv.meta?.assignee ?? conv.assignee ?? existing.meta?.assignee,
+              },
+              messages: existing.messages || [],
+              dataFetched: existing.dataFetched || false,
+            };
+            updated.sort((a, b) => {
+              const n = (ts: any) => { const v = typeof ts === 'string' ? new Date(ts).getTime() : (ts || 0); return v < 20000000000 ? v * 1000 : v; };
+              return n(b.last_activity_at) - n(a.last_activity_at);
+            });
+            return updated;
+          });
+        } catch { fetchConversations(true); }
       });
 
-      sse.addEventListener('conversation_status_changed', () => {
-        fetchConversations(true);
+      // conversation_status_changed — patch RAM directly, no HTTP
+      sse.addEventListener('conversation_status_changed', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const conv = payload.conversation;
+          if (!conv?.id) { fetchConversations(true); return; }
+          const convIdStr = conv.id.toString();
+          setConversations(prev => {
+            const idx = prev.findIndex(c => c.id.toString() === convIdStr || c.display_id?.toString() === convIdStr);
+            if (idx < 0) { fetchConversations(true); return prev; }
+            const existing = prev[idx];
+            const updated = [...prev];
+            updated[idx] = { ...existing, status: conv.status ?? existing.status, last_activity_at: conv.last_activity_at ?? existing.last_activity_at };
+            return updated;
+          });
+        } catch { fetchConversations(true); }
       });
     }
 
-    // Safety net: resync every 60 seconds (silent background refresh)
+    // Safety net: resync every 120 seconds (silent background refresh)
+    // SSE already handles real-time updates; this is just a safety fallback
     const safetyNetInterval = setInterval(() => {
       fetchConversations(true);
       if (selectedConvRef.current) {
         fetchMessages(selectedConvRef.current.id.toString(), true);
       }
-    }, 60000);
+    }, 120000);
 
     return () => {
       if (sse) sse.close();
@@ -633,20 +948,25 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
     if (!c.meta?.assignee) return false;
 
     const rawUser = userEmail.toLowerCase().trim();
-    const userPrefix = rawUser.split('@')[0].replace(/[^a-z0-9]/g, ''); // e.g. "ericktorres"
+    const userPrefix = rawUser.split('@')[0].replace(/[^a-z0-9]/g, '');
 
-    const assigneeName = (c.meta.assignee.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const assigneeEmail = (c.meta.assignee.email || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const assigneeEmail = (c.meta.assignee.email || '').toLowerCase().trim();
+    const assigneeName = (c.meta.assignee.name || '').toLowerCase().trim();
+    const assigneePrefix = assigneeEmail ? assigneeEmail.split('@')[0].replace(/[^a-z0-9]/g, '') : '';
 
-    if (assigneeEmail && (rawUser.includes(assigneeEmail) || assigneeEmail.includes(rawUser) || assigneeEmail.includes(userPrefix) || userPrefix.includes(assigneeEmail.split('@')[0]))) {
+    // 1. Strict exact email comparison
+    if (assigneeEmail && assigneeEmail === rawUser) {
       return true;
     }
-    if (assigneeName && (assigneeName.includes(userPrefix) || userPrefix.includes(assigneeName))) {
+
+    // 2. Strict exact username prefix comparison (e.g. mmendoza === mmendoza)
+    if (userPrefix && assigneePrefix && userPrefix === assigneePrefix) {
       return true;
     }
 
-    // Admins and SuperAdmins viewing "Mis Asignados" see all assigned conversations
-    if (role === 'admin' || role === 'superadmin' || rawUser.includes('admin') || rawUser.includes('platform')) {
+    // 3. Match user name if exact match or contains full user prefix (e.g. "marus mendoza" contains "mmendoza")
+    const cleanAssigneeName = assigneeName.replace(/[^a-z0-9]/g, '');
+    if (userPrefix && cleanAssigneeName && (cleanAssigneeName === userPrefix || cleanAssigneeName.includes(userPrefix))) {
       return true;
     }
 
@@ -663,6 +983,10 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       return isAssignedToUser(c);
     }
 
+    if (activeCategory === 'unanswered') {
+      return isUnanswered(c);
+    }
+
     if (activeCategory === 'assigned') {
       if (userEmail) {
         return isAssignedToUser(c);
@@ -670,8 +994,30 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       return c.status === 'open';
     }
 
+    if (activeCategory === 'ai') {
+      return c.status === 'pending' || (c.labels && (c.labels.includes('bot-escalado') || c.labels.includes('human-takeover')));
+    }
+
+    if (activeCategory === 'resolved') {
+      return c.status === 'resolved';
+    }
+
     return true;
   });
+
+  const getNormalizedTime = (c: ConversationItem) => {
+    let ts = c.last_activity_at || c.timestamp || c.created_at || 0;
+    if (typeof ts === 'string') {
+      const parsed = new Date(ts).getTime();
+      ts = isNaN(parsed) ? 0 : parsed;
+    }
+    if (typeof ts === 'number' && ts < 20000000000) {
+      ts = ts * 1000;
+    }
+    return ts;
+  };
+
+  filteredConvs.sort((a, b) => getNormalizedTime(b) - getNormalizedTime(a));
 
   // GUARANTEE: If selectedConv is open in main panel, ensure it is ALWAYS included in sidebar filteredConvs!
   if (selectedConv && !filteredConvs.some(c => c.id === selectedConv.id)) {
@@ -681,17 +1027,18 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const myAssignedCount = conversations.filter(c => isAssignedToUser(c)).length;
   const isAdmin = role === 'admin' || role === 'superadmin' || localStorage.getItem('role') === 'admin' || localStorage.getItem('role') === 'superadmin';
 
-  // Filter ONLY actual commercial sales advisors for the Vendedor Asignado dropdown
+  // All active commercial sales advisors for the Vendedor Asignado dropdown (excluding technical admins)
   const salesAdvisorsOnly = advisorsList.filter(u => {
-    const r = (u.role || '').toLowerCase();
     const e = (u.email || '').toLowerCase();
-
-    // Exclude global superadmins and external technical agency accounts
-    if (e.includes('platform.local') || e.includes('eitserv.tech') || e.includes('upagency') || e.includes('updigitalsolution')) {
+    const n = (u.name || '').toLowerCase();
+    
+    if (e.includes('platform.local') || e.includes('erick.torres') || e.includes('eitserv.tech') || e.includes('upagency') || e.includes('updigitalsolution')) {
       return false;
     }
-    // Include advisors with role 'asesor' OR active company advisors (@sicsa.com.ni)
-    return r === 'asesor' || r === 'agent' || (!r && e.includes('@sicsa.com.ni'));
+    if (n.includes('erick torres') || n.includes('platform admin')) {
+      return false;
+    }
+    return true;
   });
 
   const getCRMStage = (labels: string[]) => {
@@ -870,36 +1217,40 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       )}
 
       {/* Main 3-Column Grid Container */}
-      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr) 300px', gap: '0.75rem', flex: 1, overflow: 'hidden', width: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '310px minmax(0, 1fr) 300px', gap: '0.75rem', flex: 1, overflow: 'hidden', width: '100%' }}>
         
         {/* ================= COLUMN 1: NAVIGATION & CONVERSATION LIST ================= */}
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', borderRadius: '12px', padding: '0.85rem', border: '1px solid #e5e7eb', gap: '0.85rem', overflow: 'hidden' }}>
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', borderRadius: '12px', padding: '0.85rem', border: '1px solid #e5e7eb', gap: '0.75rem', overflow: 'hidden' }}>
           
-          <div>
-            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#0b2b4c' }}>Bandeja de Entrada</h3>
-
-            {/* Primary Action Button */}
-            <button
-              onClick={handleOpenNewConvModal}
-              style={{
-                width: '100%',
-                padding: '0.65rem',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: '#2563eb',
-                color: '#ffffff',
-                fontWeight: 700,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.4rem',
-                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>add</span> + Nueva Conversación
-            </button>
+          {/* Top Header Row with Action Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0b2b4c' }}>Bandeja de Entrada</h3>
+              
+              {/* Primary New Conversation Button */}
+              <button
+                onClick={handleOpenNewConvModal}
+                style={{
+                  padding: '0.35rem 0.65rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)',
+                  whiteSpace: 'nowrap'
+                }}
+                title="Nueva Conversación"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>add</span>
+                + Nuevo
+              </button>
+            </div>
 
             {/* Out-Of-Office Global AI Toggle Button (Admins Only) */}
             {isAdmin && (
@@ -907,24 +1258,23 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 onClick={handleToggleEmergencyAI}
                 style={{
                   width: '100%',
-                  marginTop: '0.5rem',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '8px',
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: '6px',
                   border: emergencyAiMode ? '1px solid #ef4444' : '1px solid #10b981',
                   backgroundColor: emergencyAiMode ? '#fef2f2' : '#ecfdf5',
                   color: emergencyAiMode ? '#dc2626' : '#047857',
                   fontWeight: 800,
-                  fontSize: '0.78rem',
+                  fontSize: '0.72rem',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '0.35rem',
-                  boxShadow: emergencyAiMode ? '0 0 10px rgba(239, 68, 68, 0.2)' : '0 2px 6px rgba(16, 185, 129, 0.1)'
+                  gap: '0.3rem',
+                  boxShadow: emergencyAiMode ? '0 0 8px rgba(239, 68, 68, 0.2)' : 'none'
                 }}
-                title="Activa la Inteligencia Artificial para responder a TODOS los clientes cuando los asesores estén ausentes"
+                title="Activa la IA para responder cuando los asesores estén ausentes"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: emergencyAiMode ? '#dc2626' : '#047857' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>
                   {emergencyAiMode ? 'bolt' : 'support_agent'}
                 </span>
                 {emergencyAiMode ? 'MODO AUSENCIA ACTIVO' : '⚡ Activar IA - Modo Ausencia'}
@@ -932,50 +1282,54 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
             )}
           </div>
 
-          {/* Category Filter Items */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          {/* Compact Horizontal Category Filter Tabs (Pill Strip) */}
+          <div style={{ display: 'flex', gap: '0.3rem', overflowX: 'auto', paddingBottom: '0.4rem', scrollbarWidth: 'thin' }}>
             {[
-              { id: 'all', label: 'Todos los Chats', icon: 'forum', count: conversations.length },
-              { id: 'assigned', label: 'Mis Asignados (Humano)', icon: 'person', count: myAssignedCount > 0 ? myAssignedCount : conversations.filter(c => c.status === 'open').length },
-              { id: 'ai', label: 'Atendidos por IA', icon: 'smart_toy', count: conversations.filter(c => c.status === 'pending').length },
-              { id: 'resolved', label: 'Resueltos', icon: 'check_circle', count: conversations.filter(c => c.status === 'resolved').length }
+              { id: 'all', label: 'Todos', count: conversations.length },
+              { id: 'unanswered', label: '🔴 Sin Respuesta', count: conversations.filter(c => isUnanswered(c)).length, highlight: true },
+              { id: 'assigned', label: 'Míos', count: myAssignedCount },
+              { id: 'ai', label: '🤖 Atendidos por IA / Fin de Semana', count: conversations.filter(c => c.status === 'pending' || (c.labels && (c.labels.includes('bot-escalado') || c.labels.includes('human-takeover')))).length },
+              { id: 'resolved', label: 'Resueltos', count: conversations.filter(c => c.status === 'resolved').length }
             ].map(cat => {
               const isActive = activeCategory === cat.id;
+              const isRed = cat.highlight && cat.count > 0;
+
               return (
-                <div
+                <button
                   key={cat.id}
+                  type="button"
                   onClick={() => setActiveCategory(cat.id as any)}
                   style={{
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '20px',
+                    border: isActive ? 'none' : isRed ? '1px solid #fca5a5' : '1px solid #cbd5e1',
+                    backgroundColor: isActive ? (isRed ? '#dc2626' : '#2563eb') : isRed ? '#fef2f2' : '#ffffff',
+                    color: isActive ? '#ffffff' : isRed ? '#dc2626' : '#475569',
+                    fontWeight: isActive || isRed ? 800 : 600,
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.6rem 0.75rem',
-                    borderRadius: '8px',
-                    backgroundColor: isActive ? '#eff6ff' : 'transparent',
-                    color: isActive ? '#2563eb' : '#64748b',
-                    fontWeight: isActive ? 700 : 600,
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s'
+                    gap: '0.25rem',
+                    transition: 'all 0.15s',
+                    flexShrink: 0
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>{cat.icon}</span>
-                    <span>{cat.label}</span>
-                  </div>
+                  <span>{cat.label}</span>
                   {cat.count > 0 && (
                     <span style={{
-                      fontSize: '0.7rem',
-                      padding: '0.15rem 0.5rem',
+                      fontSize: '0.62rem',
+                      padding: '0.05rem 0.35rem',
                       borderRadius: '10px',
-                      backgroundColor: isActive ? '#2563eb' : '#e5e7eb',
-                      color: isActive ? '#ffffff' : '#0b2b4c',
-                      fontWeight: 700
+                      backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : isRed ? '#fee2e2' : '#f1f5f9',
+                      color: isActive ? '#ffffff' : isRed ? '#991b1b' : '#0b2b4c',
+                      fontWeight: 800
                     }}>
                       {cat.count}
                     </span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -1067,57 +1421,190 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
             ) : (
               filteredConvs.map((c) => {
                 const isSelected = selectedConv?.id === c.id;
-                const contactName = c.meta?.sender?.name || `Conversation #${c.id}`;
+                const contactName = c.meta?.sender?.name || `Conversación #${c.id}`;
                 const isPendingBot = c.status === 'pending';
+                const initials = getInitials(contactName);
+                const avatarBg = getAvatarBg(contactName);
+                const isUnread = (c.unread_count || 0) > 0;
+                const unanswered = isUnanswered(c);
+                const slaTime = unanswered ? getSlaWaitTime(c.last_activity_at) : '';
+
+                // Extract last message text snippet
+                let lastMsgSnippet = c.meta?.sender?.phone_number || '';
+                const cachedMsgs = msgCacheRef.current[c.id.toString()] || c.messages;
+                if (cachedMsgs && cachedMsgs.length > 0) {
+                  const lastM = cachedMsgs[cachedMsgs.length - 1];
+                  if (lastM && lastM.content) {
+                    lastMsgSnippet = lastM.content;
+                  }
+                }
+
+                // Format timestamp
+                let formattedTime = '';
+                if (c.last_activity_at) {
+                  const ts = typeof c.last_activity_at === 'number' && c.last_activity_at < 2000000000 ? c.last_activity_at * 1000 : c.last_activity_at;
+                  const d = new Date(ts);
+                  const now = new Date();
+                  const isToday = d.toDateString() === now.toDateString();
+                  formattedTime = isToday 
+                    ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+                    : d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                }
+
+                const assigneeObj = c.meta?.assignee;
+                let assigneeDisplayName = '';
+                if (assigneeObj) {
+                  const email = (assigneeObj.email || '').toLowerCase().trim();
+                  const matched = advisorsList.find(a => a.email.toLowerCase().trim() === email);
+                  assigneeDisplayName = (matched?.name || assigneeObj.name || email.split('@')[0] || '').toUpperCase();
+                }
 
                 return (
                   <div
                     key={c.id}
                     onClick={() => {
-                      if (selectedConv?.id !== c.id) {
-                        setSelectedConv(c);
-                        const cached = msgCacheRef.current[c.id.toString()];
-                        if (cached && cached.length > 0) {
-                          setMessages(cached);
+                      // Mark as read locally immediately for smooth UI transition
+                      if (c.unread_count) {
+                        c.unread_count = 0;
+                        setConversations(prev => prev.map(item => item.id === c.id ? { ...item, unread_count: 0 } : item));
+                        if (token) {
+                          fetch(`/api/control/${tenantId}/conversations/${c.id}/read`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                          }).catch(() => {});
                         }
-                        fetchMessages(c.id.toString(), true);
                       }
+                      setSelectedConv(c);
+                      selectedConvRef.current = c;
+                      setHasMoreOlderMsgs(true);
+                      const cached = msgCacheRef.current[c.id.toString()] || c.messages || [];
+                      setMessages(cached);
+                      setTimeout(() => scrollToBottom('auto'), 10);
+                      fetchMessages(c.id.toString(), true);
                     }}
                     style={{
-                      padding: '0.75rem',
-                      borderRadius: '8px',
-                      backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
-                      borderLeft: isSelected ? '4px solid #2563eb' : '4px solid transparent',
-                      borderTop: '1px solid #e5e7eb',
-                      borderRight: '1px solid #e5e7eb',
-                      borderBottom: '1px solid #e5e7eb',
+                      padding: '0.65rem 0.75rem',
+                      borderRadius: '10px',
+                      backgroundColor: isSelected ? '#eff6ff' : unanswered ? '#fff5f5' : isUnread ? '#f8fafc' : '#ffffff',
+                      borderLeft: unanswered ? '4px solid #ef4444' : isUnread ? '4px solid #2563eb' : isSelected ? '4px solid #3b82f6' : '4px solid transparent',
+                      borderTop: '1px solid #f1f5f9',
+                      borderRight: '1px solid #f1f5f9',
+                      borderBottom: '1px solid #f1f5f9',
                       cursor: 'pointer',
-                      transition: 'all 0.15s'
+                      transition: 'all 0.15s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.65rem'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                      <strong style={{ fontSize: '0.85rem', color: '#0b2b4c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>{contactName}</strong>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        {c.last_activity_at && (
-                          <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 600 }}>
-                            {new Date((typeof c.last_activity_at === 'number' && c.last_activity_at < 2000000000 ? c.last_activity_at * 1000 : c.last_activity_at)).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
-                        <span style={{
-                          fontSize: '0.62rem',
-                          padding: '0.12rem 0.4rem',
-                          borderRadius: '4px',
-                          fontWeight: 700,
-                          backgroundColor: isPendingBot ? 'rgba(16, 185, 129, 0.1)' : 'rgba(37, 99, 235, 0.1)',
-                          color: isPendingBot ? '#059669' : '#2563eb'
-                        }}>
-                          {isPendingBot ? 'IA' : 'HUMANO'}
-                        </span>
-                      </div>
+                    {/* Avatar Circle */}
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '50%',
+                      backgroundColor: avatarBg,
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: isUnread ? 900 : 700,
+                      fontSize: '0.82rem',
+                      flexShrink: 0,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                    }}>
+                      {initials}
                     </div>
 
-                    <div style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {c.meta?.sender?.phone_number || `Conversación #${c.id}`}
+                    {/* Card Main Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
+                        <strong style={{ fontSize: '0.84rem', color: isUnread ? '#0f172a' : '#0b2b4c', fontWeight: isUnread ? 900 : 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {contactName}
+                        </strong>
+                        {formattedTime && (
+                          <span style={{ fontSize: '0.65rem', color: isUnread ? '#2563eb' : unanswered ? '#dc2626' : '#64748b', fontWeight: isUnread || unanswered ? 800 : 600, flexShrink: 0, marginLeft: '0.35rem' }}>
+                            {formattedTime}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ fontSize: '0.74rem', color: isUnread ? '#0f172a' : unanswered ? '#991b1b' : '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '0.2rem', fontWeight: isUnread ? 800 : unanswered ? 600 : 400 }}>
+                        {lastMsgSnippet}
+                      </div>
+
+                      {/* Bottom Badges */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        {isUnread && (
+                          <span style={{
+                            fontSize: '0.6rem',
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '4px',
+                            fontWeight: 900,
+                            backgroundColor: '#2563eb',
+                            color: '#ffffff'
+                          }}>
+                            🔴 NO LEÍDO ({c.unread_count})
+                          </span>
+                        )}
+
+                        {unanswered ? (
+                          <span style={{
+                            fontSize: '0.6rem',
+                            padding: '0.1rem 0.35rem',
+                            borderRadius: '4px',
+                            fontWeight: 800,
+                            backgroundColor: '#fee2e2',
+                            color: '#dc2626',
+                            border: '1px solid #fca5a5'
+                          }}>
+                            {slaTime || '⏱️ Sin respuesta'}
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: '0.6rem',
+                            padding: '0.1rem 0.35rem',
+                            borderRadius: '4px',
+                            fontWeight: 700,
+                            backgroundColor: isPendingBot ? 'rgba(16, 185, 129, 0.12)' : 'rgba(37, 99, 235, 0.12)',
+                            color: isPendingBot ? '#059669' : '#2563eb'
+                          }}>
+                            {isPendingBot ? '🤖 IA' : '👤 Humano'}
+                          </span>
+                        )}
+
+                        {assigneeDisplayName ? (
+                          <span style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            color: '#1e40af',
+                            backgroundColor: '#dbeafe',
+                            border: '1px solid #93c5fd',
+                            padding: '0.1rem 0.45rem',
+                            borderRadius: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.2rem',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: '120px'
+                          }} title={`Asignado a: ${assigneeDisplayName}`}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>person</span>
+                            {assigneeDisplayName}
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: '0.6rem',
+                            fontWeight: 600,
+                            color: '#64748b',
+                            backgroundColor: '#f1f5f9',
+                            padding: '0.1rem 0.35rem',
+                            borderRadius: '4px'
+                          }}>
+                            Sin Asignar
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1252,11 +1739,70 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       Resolver Chat
                     </button>
                   )}
+
+                  <button
+                    onClick={handleDeleteConversation}
+                    title="Eliminar o archivar esta conversación permanentemente de la bandeja"
+                    style={{
+                      padding: '0.5rem 0.85rem',
+                      fontSize: '0.8rem',
+                      borderRadius: '8px',
+                      border: '1px solid #fecdd3',
+                      backgroundColor: '#fff1f2',
+                      color: '#e11d48',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '1.05rem', color: '#e11d48' }}>delete</span>
+                    Eliminar
+                  </button>
                 </div>
               </div>
 
               {/* Chat Stream Window */}
-              <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', backgroundColor: '#fafafa' }}>
+              <div
+                ref={chatContainerRef}
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  if (target.scrollTop === 0 && hasMoreOlderMsgs && !loadingOlderMsgs && messages.length >= 5) {
+                    fetchOlderMessages();
+                  }
+                }}
+                style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', backgroundColor: '#fafafa' }}
+              >
+                {/* Load Older Messages Button / Indicator */}
+                {hasMoreOlderMsgs && messages.length >= 5 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '0.25rem 0 0.5rem 0' }}>
+                    <button
+                      onClick={fetchOlderMessages}
+                      disabled={loadingOlderMsgs}
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        padding: '0.4rem 1.1rem',
+                        borderRadius: '20px',
+                        backgroundColor: '#ffffff',
+                        color: '#2563eb',
+                        border: '1px solid #cbd5e1',
+                        cursor: loadingOlderMsgs ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', color: '#2563eb' }}>history</span>
+                      {loadingOlderMsgs ? 'Cargando mensajes anteriores...' : 'Cargar mensajes anteriores'}
+                    </button>
+                  </div>
+                )}
                 
                 {/* Date Divider Pill */}
                 <div style={{ display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
@@ -1573,36 +2119,94 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           );
                         })()}
 
-                        {/* ATTACHMENTS (VOICE NOTES, IMAGES, PDFS) */}
+                        {/* ATTACHMENTS (VOICE NOTES, IMAGES, VIDEOS, PDFS) */}
+                        {/* Chatwoot file_type enum: image=0, audio=1, video=2, file=3, location=4, fallback=5 */}
                         {m.attachments && m.attachments.length > 0 && (
                           <div style={{ marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                             {m.attachments.map((att: any, attIdx: number) => {
-                              const fileType = att.file_type || '';
-                              const dataUrl = att.data_url || att.thumb_url || '';
+                              // Chatwoot REST API returns file_type as string (Rails enum serialization)
+                              // Webhooks/SSE may return as integer — handle both
+                              const ft = att.file_type;
+                              const dataUrl = att.data_url || att.thumb_url || att.external_url || '';
+                              const urlLower = dataUrl.toLowerCase();
 
-                              if (fileType === 'location') return null; // Rendered above
+                              const isAudio   = ft === 'audio'    || ft === 1 || ft === '1'
+                                || urlLower.includes('.ogg') || urlLower.includes('.mp3')
+                                || urlLower.includes('.m4a') || urlLower.includes('.wav')
+                                || urlLower.includes('.opus') || urlLower.includes('.aac');
 
-                              if (fileType === 'audio' || dataUrl.includes('.ogg') || dataUrl.includes('.mp3') || dataUrl.includes('.m4a') || dataUrl.includes('.wav')) {
+                              const isImage   = ft === 'image'    || ft === 0 || ft === '0'
+                                || urlLower.match(/\.(jpeg|jpg|gif|png|svg|webp)(\?|$)/) != null;
+
+                              const isVideo   = ft === 'video'    || ft === 2 || ft === '2'
+                                || urlLower.includes('.mp4') || urlLower.includes('.mov')
+                                || urlLower.includes('.webm') || urlLower.includes('.avi');
+
+                              const isFile    = ft === 'file'     || ft === 3 || ft === '3'
+                                || urlLower.includes('.pdf') || urlLower.includes('.doc')
+                                || urlLower.includes('.docx') || urlLower.includes('.xlsx')
+                                || urlLower.includes('.csv') || urlLower.includes('.zip');
+
+                              const isLocation = ft === 'location' || ft === 4 || ft === '4';
+
+                              if (isLocation) return null; // Rendered above as map
+
+                              if (isAudio) {
                                 return (
                                   <div key={attIdx} style={{ backgroundColor: '#e0f2fe', padding: '0.6rem', borderRadius: '8px', marginTop: '0.25rem', border: '1px solid #0284c7' }}>
                                     <div style={{ fontSize: '0.72rem', color: '#0369a1', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                      <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>mic</span> Audio de WhatsApp
+                                      <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>mic</span>
+                                      Audio de WhatsApp
                                     </div>
-                                    <audio controls src={dataUrl} style={{ width: '100%', height: '36px' }} />
+                                    <audio
+                                      controls
+                                      src={dataUrl}
+                                      style={{ width: '100%', height: '36px' }}
+                                      onError={(e) => {
+                                        // If audio fails to load, show download link fallback
+                                        const target = e.currentTarget;
+                                        target.style.display = 'none';
+                                        const link = document.createElement('a');
+                                        link.href = dataUrl;
+                                        link.target = '_blank';
+                                        link.textContent = '🎵 Descargar audio';
+                                        link.style.fontSize = '0.78rem';
+                                        link.style.color = '#0369a1';
+                                        target.parentNode?.appendChild(link);
+                                      }}
+                                    />
                                   </div>
                                 );
-                              } else if (fileType === 'image' || dataUrl.match(/\.(jpeg|jpg|gif|png|svg)$/i)) {
+                              }
+
+                              if (isVideo) {
+                                return (
+                                  <div key={attIdx} style={{ marginTop: '0.25rem' }}>
+                                    <video
+                                      controls
+                                      src={dataUrl}
+                                      style={{ maxWidth: '280px', maxHeight: '200px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              if (isImage) {
                                 return (
                                   <div key={attIdx} style={{ marginTop: '0.25rem' }}>
                                     <img
                                       src={dataUrl}
-                                      alt="Attachment"
+                                      alt="Adjunto"
                                       style={{ maxWidth: '260px', maxHeight: '220px', borderRadius: '8px', objectFit: 'cover', cursor: 'pointer', border: '1px solid #e5e7eb' }}
                                       onClick={() => window.open(dataUrl, '_blank')}
                                     />
                                   </div>
                                 );
-                              } else {
+                              }
+
+                              if (isFile) {
+                                const isPdf = urlLower.includes('.pdf') || ft === 'file' || ft === 3;
+                                const fileName = att.fallback_title || dataUrl.split('/').pop()?.split('?')[0] || 'Documento';
                                 return (
                                   <div key={attIdx} style={{ marginTop: '0.25rem' }}>
                                     <a
@@ -1623,14 +2227,42 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                                         border: '1px solid #e5e7eb'
                                       }}
                                     >
-                                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>description</span> Descargar Documento / PDF
+                                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>
+                                        {isPdf ? 'picture_as_pdf' : 'description'}
+                                      </span>
+                                      {fileName.length > 30 ? fileName.slice(0, 30) + '...' : fileName}
                                     </a>
                                   </div>
                                 );
                               }
+
+                              // Fallback: unknown type — show as generic download link
+                              if (dataUrl) {
+                                return (
+                                  <div key={attIdx} style={{ marginTop: '0.25rem' }}>
+                                    <a
+                                      href={dataUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                                        padding: '0.45rem 0.85rem', backgroundColor: '#ffffff',
+                                        borderRadius: '6px', color: '#64748b', fontSize: '0.78rem',
+                                        textDecoration: 'none', fontWeight: 'bold', border: '1px solid #e5e7eb'
+                                      }}
+                                    >
+                                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>attach_file</span>
+                                      Ver adjunto
+                                    </a>
+                                  </div>
+                                );
+                              }
+
+                              return null;
                             })}
                           </div>
                         )}
+
 
                         {/* MESSAGE TIMESTAMP (BOTTOM RIGHT CORNER) */}
                         {m.created_at && (
@@ -1959,6 +2591,39 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 )}
               </div>
 
+              {/* Customer Maintenance & Workshop Appointments Section */}
+              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.15rem', color: '#7c3aed' }}>calendar_month</span>
+                  Citas de Taller ({customerAppointments.length}):
+                </div>
+
+                {customerAppointments.length === 0 ? (
+                  <div style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic', padding: '0.4rem', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
+                    Sin citas agendadas actualmente para este cliente.
+                  </div>
+                ) : (
+                  customerAppointments.map((appt) => (
+                    <div key={appt.id} style={{ padding: '0.65rem', borderRadius: '8px', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#6d28d9' }}>
+                          ID Reserva #{appt.id} • {appt.appointment_time} hs
+                        </span>
+                        <span style={{ fontSize: '0.62rem', padding: '0.12rem 0.4rem', borderRadius: '4px', backgroundColor: '#7c3aed', color: '#ffffff', fontWeight: 800 }}>
+                          🟢 Confirmada
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0b2b4c' }}>
+                        🛠️ {appt.service || 'Mantenimiento y Reparación'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#4c1d95', fontWeight: 700 }}>
+                        📅 {new Date(appt.appointment_date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
               {/* Agent & Sales Team Assignment Section */}
               <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 <div>
@@ -1966,70 +2631,105 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                     <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#2563eb' }}>manage_accounts</span>
                     Vendedor Asignado ({salesAdvisorsOnly.length} Asesores):
                   </label>
-                  <select
-                    value={
-                      salesAdvisorsOnly.find(a => 
-                        (selectedConv.meta?.assignee?.email && a.email.toLowerCase() === selectedConv.meta.assignee.email.toLowerCase()) ||
-                        (selectedConv.meta?.assignee?.id && a.id === selectedConv.meta.assignee.id) ||
-                        (selectedConv.meta?.assignee?.name && (a.name === selectedConv.meta.assignee.name || a.email.split('@')[0] === selectedConv.meta.assignee.name))
-                      )?.name || salesAdvisorsOnly.find(a => selectedConv.meta?.assignee?.email && a.email.toLowerCase() === selectedConv.meta.assignee.email.toLowerCase())?.email || 'unassigned'
-                    }
-                    onChange={async (e) => {
-                      const selectedVal = e.target.value;
-                      const advisor = salesAdvisorsOnly.find(a => a.name === selectedVal || a.email === selectedVal);
-                      const assigneeId = advisor?.id || null;
-                      const newAssignee = advisor ? { id: advisor.id, name: advisor.name, email: advisor.email } : undefined;
-
-                      try {
-                        await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/assign`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                          },
-                          body: JSON.stringify({ assignee_id: assigneeId })
-                        });
-
-                        // Update selectedConv state immutably for immediate React re-render
-                        setSelectedConv(prev => prev ? {
-                          ...prev,
-                          meta: {
-                            ...prev.meta,
-                            assignee: newAssignee
+                  {(() => {
+                    const canAssignSales = ['superadmin', 'admin', 'supervisor'].includes(role || '');
+                    return (
+                      <>
+                        <select
+                          disabled={!canAssignSales}
+                          value={
+                            (() => {
+                              const email = (selectedConv.meta?.assignee?.email || '').toLowerCase().trim();
+                              if (!email) return 'unassigned';
+                              const found = salesAdvisorsOnly.find(a => a.email.toLowerCase().trim() === email);
+                              return found ? found.email : 'unassigned';
+                            })()
                           }
-                        } : null);
+                          onChange={async (e) => {
+                            if (!canAssignSales) return;
+                            const selectedVal = e.target.value;
+                            if (selectedVal === 'unassigned') {
+                              try {
+                                await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/assign`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                  body: JSON.stringify({ assignee_id: null, assignee_email: 'unassigned' })
+                                });
+                                setSelectedConv(prev => prev ? { ...prev, meta: { ...prev.meta, assignee: undefined } } : null);
+                                setConversations(prev => prev.map(c => c.id === selectedConv.id ? { ...c, meta: { ...c.meta, assignee: undefined } } : c));
+                                showToast('Conversación desasignada (Cola General).');
+                                // RAM already updated above — no HTTP needed
+                              } catch (err: any) {
+                                showToast(`Error al desasignar: ${err.message}`, 'error');
+                              }
+                              return;
+                            }
 
-                        // Update conversations list state immutably
-                        setConversations(prev => prev.map(c => 
-                          c.id === selectedConv.id ? { ...c, meta: { ...c.meta, assignee: newAssignee } } : c
-                        ));
+                            const advisor = salesAdvisorsOnly.find(a => a.email === selectedVal || a.id?.toString() === selectedVal || a.name === selectedVal);
+                            const assigneeId = advisor?.id || null;
+                            const advisorEmail = advisor?.email || selectedVal;
+                            const newAssignee = { id: assigneeId || undefined, name: advisor?.name || advisorEmail.split('@')[0], email: advisorEmail };
 
-                        showToast(selectedVal === 'unassigned' ? 'Conversación desasignada (Cola General).' : `Conversación asignada exitosamente a ${advisor?.name || selectedVal}`);
-                        
-                        // Silent background refresh
-                        setTimeout(() => fetchConversations(true), 300);
-                      } catch (err: any) {
-                        showToast(`Error al reasignar: ${err.message}`, 'error');
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.45rem',
-                      borderRadius: '8px',
-                      backgroundColor: '#f8fafc',
-                      border: '1px solid #e5e7eb',
-                      color: '#0b2b4c',
-                      fontSize: '0.8rem',
-                      fontWeight: 700
-                    }}
-                  >
-                    <option value="unassigned">Sin Asignar (Cola General)</option>
-                    {salesAdvisorsOnly.map((adv) => (
-                      <option key={adv.id || adv.email} value={adv.name || adv.email}>
-                        {adv.name || adv.email.split('@')[0]} ({adv.email})
-                      </option>
-                    ))}
-                  </select>
+                            try {
+                              const res = await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/assign`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ assignee_id: assigneeId, assignee_email: advisorEmail })
+                              });
+
+                              const resData = await res.json();
+                              if (!res.ok) throw new Error(resData.error || 'Error al reasignar');
+
+                              setSelectedConv(prev => prev ? {
+                                ...prev,
+                                meta: {
+                                  ...prev.meta,
+                                  assignee: newAssignee as any
+                                }
+                              } : null);
+
+                              setConversations(prev => prev.map(c => 
+                                c.id === selectedConv.id ? { ...c, meta: { ...c.meta, assignee: newAssignee as any } } : c
+                              ));
+
+                              showToast(`Conversación asignada exitosamente a ${newAssignee.name} (${advisorEmail})`);
+                                // RAM already updated above — no HTTP needed
+                            } catch (err: any) {
+                              showToast(`Error al reasignar: ${err.message}`, 'error');
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '0.45rem',
+                            borderRadius: '8px',
+                            backgroundColor: canAssignSales ? '#f8fafc' : '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            color: canAssignSales ? '#0b2b4c' : '#64748b',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            cursor: canAssignSales ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          <option value="unassigned">-- Sin Asignar (Cola General) --</option>
+                          {salesAdvisorsOnly.map(a => (
+                            <option key={a.id || a.email} value={a.email}>
+                              {a.name ? `${a.name} (${a.email})` : a.email}
+                            </option>
+                          ))}
+                        </select>
+                        {!canAssignSales && (
+                          <span style={{ fontSize: '0.68rem', color: '#64748b', fontStyle: 'italic', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>lock</span>
+                            Reasignación restringida a Administradores y Mercadeo.
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -2109,37 +2809,188 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
               </div>
 
               {/* Client Opportunities Section */}
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: '#2563eb' }}>business_center</span>
                     Oportunidades del Cliente:
                   </span>
-                  <button
-                    onClick={() => {
-                      setEditingOppData(null);
-                      setShowOppModal(true);
-                    }}
-                    style={{
-                      padding: '0.25rem 0.6rem',
-                      borderRadius: '6px',
-                      border: 'none',
-                      backgroundColor: '#2563eb',
-                      color: '#ffffff',
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.2rem'
-                    }}
-                  >
-                    + Crear
-                  </button>
+
+                  <div style={{ display: 'flex', gap: '0.35rem', width: '100%' }}>
+                    <button
+                      onClick={() => {
+                        // 1-Click AI Auto-Extract Opportunity from Chat Context
+                        const contactName = selectedConv.meta?.sender?.name || 'Cliente';
+                        const contactPhone = selectedConv.meta?.sender?.phone_number || '';
+                        const currentAdvisor = userEmail ? userEmail.split('@')[0] : (selectedConv.meta?.assignee?.name || 'Sin Asignar');
+
+                        const cachedMsgs = msgCacheRef.current[selectedConv.id.toString()] || selectedConv.messages || messages;
+                        let extractedTitle = '';
+                        let extractedValue = 100;
+
+                        if (cachedMsgs && cachedMsgs.length > 0) {
+                          for (let i = cachedMsgs.length - 1; i >= 0; i--) {
+                            const text = cachedMsgs[i].content || '';
+                            const priceMatch = text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/) || text.match(/([0-9]+(?:\.[0-9]{1,2})?)\s*(?:USD|\$|dolares|dólares)/i);
+                            if (priceMatch && priceMatch[1]) {
+                              extractedValue = parseFloat(priceMatch[1]);
+                            }
+
+                            if (!extractedTitle && text.length > 3) {
+                              if (/case|laptop|computadora|impresora|toner|pantalla|proyector|credex|cotiz/i.test(text)) {
+                                const snippet = text.replace(/[^a-zA-Z0-9\s$.,]/g, '').trim().slice(0, 45);
+                                extractedTitle = `Interés: ${snippet}`;
+                              }
+                            }
+                          }
+                        }
+
+                        if (!extractedTitle) {
+                          extractedTitle = `Oportunidad Comercial - ${contactName}`;
+                        }
+
+                        setEditingOppData({
+                          contact_name: contactName,
+                          contact_phone: contactPhone,
+                          conversation_id: selectedConv.id.toString(),
+                          title: extractedTitle,
+                          value: extractedValue,
+                          currency: 'USD',
+                          stage: getCRMStage(selectedConv.labels) || 'stage:prospecto',
+                          assigned_agent_name: currentAdvisor,
+                          next_action_type: 'llamada',
+                          next_action_notes: 'Dar seguimiento a la cotización y consulta de WhatsApp'
+                        });
+
+                        setShowOppModal(true);
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '0.35rem 0.5rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: '#10b981',
+                        color: '#ffffff',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.2rem',
+                        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="Auto-Detectar Oportunidad desde los mensajes del chat"
+                    >
+                      ⚡ Auto-Crear (1-Clic)
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingOppData(null);
+                        setShowOppModal(true);
+                      }}
+                      style={{
+                        padding: '0.35rem 0.6rem',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#0b2b4c',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      + Manual
+                    </button>
+                  </div>
                 </div>
 
                 {clientOpportunities.length === 0 ? (
-                  <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Sin oportunidades activas registradas.</span>
+                  <div style={{
+                    padding: '0.65rem',
+                    backgroundColor: '#f0f9ff',
+                    borderRadius: '8px',
+                    border: '1px border #bae6fd',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.35rem'
+                  }}>
+                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#0284c7' }}>bolt</span>
+                      ¡No pierdas esta venta!
+                    </div>
+                    <div style={{ fontSize: '0.71rem', color: '#0c4a6e', lineHeight: '1.3' }}>
+                      Crea la oportunidad en 1-clic para agendar el seguimiento comercial de esta cotización.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const contactName = selectedConv.meta?.sender?.name || 'Cliente';
+                        const contactPhone = selectedConv.meta?.sender?.phone_number || '';
+                        const currentAdvisor = userEmail ? userEmail.split('@')[0] : (selectedConv.meta?.assignee?.name || 'Sin Asignar');
+
+                        const cachedMsgs = msgCacheRef.current[selectedConv.id.toString()] || selectedConv.messages || messages;
+                        let extractedTitle = '';
+                        let extractedValue = 100;
+
+                        if (cachedMsgs && cachedMsgs.length > 0) {
+                          for (let i = cachedMsgs.length - 1; i >= 0; i--) {
+                            const text = cachedMsgs[i].content || '';
+                            const priceMatch = text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/) || text.match(/([0-9]+(?:\.[0-9]{1,2})?)\s*(?:USD|\$|dolares|dólares)/i);
+                            if (priceMatch && priceMatch[1]) {
+                              extractedValue = parseFloat(priceMatch[1]);
+                            }
+
+                            if (!extractedTitle && text.length > 3) {
+                              if (/case|laptop|computadora|impresora|toner|pantalla|proyector|credex|cotiz/i.test(text)) {
+                                const snippet = text.replace(/[^a-zA-Z0-9\s$.,]/g, '').trim().slice(0, 45);
+                                extractedTitle = `Interés: ${snippet}`;
+                              }
+                            }
+                          }
+                        }
+
+                        if (!extractedTitle) {
+                          extractedTitle = `Oportunidad Comercial - ${contactName}`;
+                        }
+
+                        setEditingOppData({
+                          contact_name: contactName,
+                          contact_phone: contactPhone,
+                          conversation_id: selectedConv.id.toString(),
+                          title: extractedTitle,
+                          value: extractedValue,
+                          currency: 'USD',
+                          stage: getCRMStage(selectedConv.labels) || 'stage:prospecto',
+                          assigned_agent_name: currentAdvisor,
+                          next_action_type: 'llamada',
+                          next_action_notes: 'Dar seguimiento a la cotización y consulta de WhatsApp'
+                        });
+
+                        setShowOppModal(true);
+                      }}
+                      style={{
+                        marginTop: '0.15rem',
+                        padding: '0.4rem',
+                        backgroundColor: '#0284c7',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.3rem'
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>bolt</span>
+                      ⚡ Auto-Crear Oportunidad (1-Clic)
+                    </button>
+                  </div>
                 ) : (
                   clientOpportunities.map((opp: any) => (
                     <div
@@ -2284,6 +3135,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
         defaultContactName={selectedConv?.meta?.sender?.name || 'Cliente'}
         defaultContactPhone={selectedConv?.meta?.sender?.phone_number || ''}
         defaultConvId={selectedConv?.id?.toString() || ''}
+        advisorsList={advisorsList}
       />
 
       {/* Mic Permission Modal */}

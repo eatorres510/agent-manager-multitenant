@@ -41,6 +41,7 @@ const STAGES = [
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role, onOpenChat }) => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [advisorsList, setAdvisorsList] = useState<{ id?: number; name: string; email: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -52,6 +53,15 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
     setToast({ text, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  useEffect(() => {
+    if (token) {
+      fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => { if (Array.isArray(data)) setAdvisorsList(data); })
+        .catch(e => console.error('Error fetching users in Kanban:', e));
+    }
+  }, [token]);
 
   const fetchOpportunities = async () => {
     setLoading(true);
@@ -477,6 +487,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
           }
         }}
         initialData={editingOpp}
+        advisorsList={advisorsList}
       />
     </div>
   );

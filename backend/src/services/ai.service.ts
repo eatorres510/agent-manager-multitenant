@@ -239,7 +239,24 @@ class AIService {
           const args = call.args as { date: string, time: string, name: string, phone: string, service?: string };
           try {
             const appt = await configService.createAppointment(tenantId, args.name, args.phone, args.date, args.time, args.service);
-            result = `Cita de ${appt.service} reservada con éxito. ID Reserva: ${appt.id}. Detalle: ${appt.customer_name} el día ${appt.appointment_date} a las ${appt.appointment_time}.`;
+            
+            // Auto-create CRM Opportunity for Workshop / Taller
+            await controlService.createOpportunity(tenantId, {
+              contact_name: args.name || customerPhone || 'Cliente WhatsApp',
+              contact_phone: args.phone || customerPhone || '',
+              conversation_id: conversationId,
+              title: `🛠️ Cita Taller: ${args.service || 'Mantenimiento Técnico'}`,
+              value: 50,
+              currency: 'USD',
+              stage: 'stage:cita_agendada',
+              next_action_type: 'visita',
+              next_action_notes: `Cita de taller agendada para el ${args.date} a las ${args.time} hs. Servicio: ${args.service || 'Mantenimiento'}`
+            }).catch(err => console.error('[CRM Opp Auto-Create Error]', err));
+
+            // Auto-add labels to conversation
+            await controlService.toggleLabel(tenantId, conversationId, ['stage:cita_agendada', 'taller-cita']).catch((err: any) => console.error('[Label Add Error]', err));
+
+            result = `Cita de ${appt.service} reservada con éxito en el sistema de Taller. ID Reserva: ${appt.id}. Detalle: ${appt.customer_name} el día ${appt.appointment_date} a las ${appt.appointment_time}.`;
           } catch (err: any) {
             result = `Error al registrar cita: El horario de las ${args.time} el día ${args.date} ya está ocupado. Por favor consulta la disponibilidad de nuevo y elige otra hora.`;
           }
