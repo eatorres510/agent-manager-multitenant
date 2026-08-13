@@ -6,11 +6,13 @@ interface AnalyticsTabProps {
   role: string | null;
 }
 
-type SubTab = 'executive' | 'crm-pipeline' | 'human-effort' | 'channels' | 'ai-insights';
+type SubTab = 'executive' | 'crm-pipeline' | 'human-effort' | 'channels' | 'ai-insights' | 'quotes-audit';
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) => {
   const [subTab, setSubTab] = useState<SubTab>('executive');
   const [dateRange, setDateRange] = useState<'7d' | '30d' | 'all'>('30d');
+  const [quotesAuditData, setQuotesAuditData] = useState<any[]>([]);
+  const [loadingQuotesAudit, setLoadingQuotesAudit] = useState(false);
 
   // Live Database Metrics State
   const [metrics, setMetrics] = useState({
@@ -72,6 +74,21 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
   useEffect(() => {
     fetchAnalytics();
   }, [tenantId, token]);
+
+  useEffect(() => {
+    if (subTab === 'quotes-audit' && token) {
+      setLoadingQuotesAudit(true);
+      fetch(`/api/control/${tenantId}/reports/quotes-audit`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setQuotesAuditData(data);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingQuotesAudit(false));
+    }
+  }, [subTab, tenantId, token]);
 
   return (
     <div className="glass-card" style={{ animation: 'fadeIn 0.2s ease-out' }}>
@@ -211,6 +228,48 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
         >
           <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>label</span>
           Pipeline CRM de Ventas (Labels)
+        </button>
+        <button
+          onClick={() => setSubTab('ai-insights')}
+          style={{
+            padding: '0.55rem 1rem',
+            borderRadius: '8px',
+            border: '1px solid',
+            borderColor: subTab === 'ai-insights' ? '#db2777' : '#e5e7eb',
+            backgroundColor: subTab === 'ai-insights' ? '#fdf2f8' : '#ffffff',
+            color: subTab === 'ai-insights' ? '#db2777' : '#64748b',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem'
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>auto_awesome</span>
+          Inteligencia de Mercado & Stock
+        </button>
+        <button
+          onClick={() => setSubTab('quotes-audit')}
+          style={{
+            padding: '0.55rem 1rem',
+            borderRadius: '8px',
+            border: '1px solid',
+            borderColor: subTab === 'quotes-audit' ? '#2563eb' : '#e5e7eb',
+            backgroundColor: subTab === 'quotes-audit' ? '#eff6ff' : '#ffffff',
+            color: subTab === 'quotes-audit' ? '#2563eb' : '#64748b',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem'
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>receipt_long</span>
+          Auditoría de Cotizaciones
         </button>
         <button
           onClick={() => setSubTab('human-effort')}
@@ -508,6 +567,75 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: QUOTES AUDIT & EXPORT */}
+      {subTab === 'quotes-audit' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0b2b4c' }}>📊 Auditoría Gerencial de Cotizaciones y Asignaciones</h3>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>Trazabilidad inmutable de todas las cotizaciones creadas por asesor con exportación a Excel.</p>
+            </div>
+            <button
+              onClick={() => {
+                window.open(`/api/control/${tenantId}/reports/quotes-audit?format=csv`, '_blank');
+              }}
+              style={{
+                backgroundColor: '#059669',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.6rem 1.1rem',
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>download</span>
+              Exportar a Excel (CSV)
+            </button>
+          </div>
+
+          <div style={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                  <th style={{ padding: '0.75rem 1rem' }}>ID</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Cliente</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Teléfono</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Cotización / Oportunidad</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Monto</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Asesor Asignado</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingQuotesAudit ? (
+                  <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8' }}>Cargando auditoría...</td></tr>
+                ) : quotesAuditData.length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8' }}>Sin cotizaciones registradas.</td></tr>
+                ) : (
+                  quotesAuditData.map((row: any) => (
+                    <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#2563eb' }}>#{row.id}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#1e293b' }}>{row.contact_name || 'Cliente'}</td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#64748b' }}>{row.contact_phone || '-'}</td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#1e293b' }}>{row.title || 'Cotización'}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: '#059669' }}>${row.value || 0} {row.currency || 'USD'}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#7c3aed' }}>{row.assigned_agent_name || 'Sin Asignar'}</td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#64748b' }}>{new Date(row.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

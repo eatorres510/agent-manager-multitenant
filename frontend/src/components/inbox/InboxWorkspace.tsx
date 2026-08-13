@@ -10,7 +10,7 @@ interface InboxWorkspaceProps {
 
 interface ChatAttachment {
   id: number;
-  message_id: number;
+  message_id?: number;
   file_type: 'image' | 'audio' | 'video' | 'file' | 'location' | string;
   data_url: string;
   thumb_url?: string;
@@ -72,7 +72,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const [selectedConv, setSelectedConv] = useState<ConversationItem | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeCategory, setActiveCategory] = useState<'all' | 'unanswered' | 'assigned' | 'ai' | 'pending' | 'resolved'>('all');
-  const [filterOnlyMine, setFilterOnlyMine] = useState<boolean>(false);
+  const [filterOnlyMine, setFilterOnlyMine] = useState<boolean>(!['admin', 'superadmin', 'mercadeo', 'supervisor'].includes((role || '').toLowerCase()));
+  const [typingLocks, setTypingLocks] = useState<{ [convId: string]: { agent_name: string; agent_email: string; expires_at: number } }>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [fetchingConvs, setFetchingConvs] = useState(false);
   const [fetchingMsgs, setFetchingMsgs] = useState(false);
@@ -173,6 +174,11 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const [loadingOlderMsgs, setLoadingOlderMsgs] = useState(false);
   const [hasMoreOlderMsgs, setHasMoreOlderMsgs] = useState(true);
 
+  // Sidebar Conversation List Pagination state
+  const [convPage, setConvPage] = useState(1);
+  const [loadingMoreConvs, setLoadingMoreConvs] = useState(false);
+  const [hasMoreConvs, setHasMoreConvs] = useState(true);
+
   // Voice Recording state
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [recordingTimer, setRecordingTimer] = useState(0);
@@ -184,13 +190,35 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   // Workshop & Maintenance Appointments for active customer
   const [customerAppointments, setCustomerAppointments] = useState<any[]>([]);
 
+  // Assignment History state
+  const [assignmentHistory, setAssignmentHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   useEffect(() => {
-    if (selectedConv) {
+    if (selectedConv && filterOnlyMine && !isAssignedToUser(selectedConv)) {
+      setFilterOnlyMine(false);
+    }
+  }, [selectedConv, filterOnlyMine]);
+
+  useEffect(() => {
+    if (selectedConv && token) {
       fetchCustomerAppointments();
+      setLoadingHistory(true);
+      fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/assignment-history`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAssignmentHistory(data);
+          else setAssignmentHistory([]);
+        })
+        .catch(() => setAssignmentHistory([]))
+        .finally(() => setLoadingHistory(false));
     } else {
       setCustomerAppointments([]);
+      setAssignmentHistory([]);
     }
-  }, [selectedConv?.id]);
+  }, [selectedConv?.id, token, tenantId]);
 
   const fetchCustomerAppointments = async () => {
     try {
@@ -258,7 +286,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
-        const audioFile = new File([audioBlob], `nota_de_voz_${Date.now()}.${ext}`, { type: mimeType });
+        const convId = selectedConvRef.current ? selectedConvRef.current.id : 'temp';
+        const audioFile = new File([audioBlob], `nota_de_voz_conv${convId}_${Date.now()}.${ext}`, { type: mimeType });
         setSelectedFile(audioFile);
         stream.getTracks().forEach(track => track.stop());
         showToast('Nota de voz grabada exitosamente.');
@@ -434,6 +463,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   };
 
   const fetchConversations = async (isSilent = false) => {
+    setConvPage(1);
+    setHasMoreConvs(true);
     if (!isSilent && conversations.length === 0) {
       setFetchingConvs(true);
     }
@@ -499,6 +530,56 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       console.error('Error fetching live conversations:', e);
     } finally {
       setFetchingConvs(false);
+    }
+  };
+
+  const fetchMoreConversations = async () => {
+    if (loadingMoreConvs || !hasMoreConvs) return;
+    setLoadingMoreConvs(true);
+    const nextPage = convPage + 1;
+    try {
+      let statusParam = 'all';
+      if (activeCategory === 'pending') statusParam = 'pending';
+      else if (activeCategory === 'assigned') statusParam = 'open';
+      else if (activeCategory === 'resolved') statusParam = 'resolved';
+
+      const res = await fetch(`/api/control/${tenantId}/conversations?status=${statusParam}&page=${nextPage}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const convList: ConversationItem[] = data;
+          if (convList.length === 0) {
+            setHasMoreConvs(false);
+          } else {
+            setConversations(prev => {
+              const newConvs = [...prev];
+              convList.forEach(incoming => {
+                const idx = newConvs.findIndex(c => c.id === incoming.id);
+                if (idx < 0) {
+                  newConvs.push({ ...incoming, messages: [], dataFetched: false });
+                } else {
+                  newConvs[idx] = {
+                    ...incoming,
+                    messages: newConvs[idx].messages || [],
+                    dataFetched: newConvs[idx].dataFetched || false
+                  };
+                }
+              });
+              return newConvs;
+            });
+            setConvPage(nextPage);
+            if (convList.length < 25) {
+              setHasMoreConvs(false);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching more conversations:', e);
+    } finally {
+      setLoadingMoreConvs(false);
     }
   };
 
@@ -649,14 +730,21 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
     setSelectedFile(null);
 
     // Optimistic UI update scoped strictly to target conversation:
-    if (textToSend) {
+    if (textToSend || fileToSend) {
+      const isAudio = fileToSend && (fileToSend.type.startsWith('audio/') || fileToSend.name.toLowerCase().includes('nota_de_voz') || fileToSend.name.toLowerCase().endsWith('.webm') || fileToSend.name.toLowerCase().endsWith('.ogg'));
       const optimisticMsg: ChatMessage = {
         id: Date.now(),
-        content: textToSend,
+        content: textToSend || (isAudio ? '🎤 Audio de WhatsApp' : `📁 ${fileToSend?.name || 'Archivo adjunto'}`),
         message_type: 1,
         private: isPrivate,
         created_at: Math.floor(Date.now() / 1000),
-        sender: { name: userEmail ? userEmail.split('@')[0].toUpperCase() : 'COMERCIAL' }
+        sender: { name: userEmail ? userEmail.split('@')[0].toUpperCase() : 'COMERCIAL' },
+        attachments: fileToSend ? [{
+          id: Date.now() + 1,
+          file_type: isAudio ? 'audio' : 'file',
+          data_url: URL.createObjectURL(fileToSend),
+          fallback_title: fileToSend.name
+        }] : undefined
       };
 
       // Add to RAM cache for target conversation
@@ -909,6 +997,42 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
         } catch { fetchConversations(true); }
       });
 
+      // conversation_reassigned — real-time 0s reactivity for workspace list
+      sse.addEventListener('conversation_reassigned', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const conv = payload.conversation;
+          if (!conv?.id) { fetchConversations(true); return; }
+          const convIdStr = conv.id.toString();
+          const displayIdStr = payload.display_id?.toString() || convIdStr;
+          const newAssignee = conv.meta?.assignee;
+          const newAssigneeEmail = (newAssignee?.email || '').toLowerCase().trim();
+
+          setConversations(prev => {
+            const idx = prev.findIndex(c => c.id.toString() === convIdStr || c.display_id?.toString() === displayIdStr);
+            if (idx < 0) {
+              fetchConversations(true);
+              return prev;
+            }
+            const existing = prev[idx];
+            const updated = [...prev];
+            updated[idx] = {
+              ...existing,
+              meta: {
+                ...existing.meta,
+                assignee: newAssignee || existing.meta?.assignee
+              }
+            };
+            return updated;
+          });
+
+          // Toast notification if assigned to logged in advisor
+          if (userEmail && newAssigneeEmail === userEmail.toLowerCase().trim()) {
+            showToast(`🛎️ Conversación #${displayIdStr} te ha sido reasignada.`);
+          }
+        } catch { fetchConversations(true); }
+      });
+
       // conversation_status_changed — patch RAM directly, no HTTP
       sse.addEventListener('conversation_status_changed', (e: MessageEvent) => {
         try {
@@ -925,6 +1049,24 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
             return updated;
           });
         } catch { fetchConversations(true); }
+      });
+
+      // agent_typing_lock — real-time concurrency warning
+      sse.addEventListener('agent_typing_lock', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.conversation_id && payload.agent_email) {
+            const convIdStr = payload.conversation_id.toString();
+            setTypingLocks(prev => ({
+              ...prev,
+              [convIdStr]: {
+                agent_name: payload.agent_name || 'Un asesor',
+                agent_email: payload.agent_email,
+                expires_at: Date.now() + 30000
+              }
+            }));
+          }
+        } catch (err) {}
       });
     }
 
@@ -976,10 +1118,21 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   let filteredConvs = conversations.filter(c => {
     const name = c.meta?.sender?.name || '';
     const phone = c.meta?.sender?.phone_number || '';
-    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || phone.includes(searchQuery);
+    const cleanQuery = searchQuery.trim().toLowerCase();
+    const cleanDigits = searchQuery.replace(/[^0-9]/g, '');
+    const nameNormalized = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const queryNormalized = cleanQuery.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const phoneDigits = phone.replace(/[^0-9]/g, '');
+
+    const matchesSearch = !cleanQuery || 
+      nameNormalized.includes(queryNormalized) || 
+      (cleanDigits.length >= 4 && phoneDigits.includes(cleanDigits)) ||
+      (c.display_id && String(c.display_id).toLowerCase().includes(cleanQuery)) ||
+      (c.id && String(c.id).toLowerCase().includes(cleanQuery));
+
     if (!matchesSearch) return false;
 
-    if (filterOnlyMine) {
+    if (filterOnlyMine && !cleanQuery) {
       return isAssignedToUser(c);
     }
 
@@ -1463,6 +1616,12 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   <div
                     key={c.id}
                     onClick={() => {
+                      // Clear un-sent file attachments and cancel active recording when switching conversations
+                      setSelectedFile(null);
+                      if (isRecordingAudio) {
+                        cancelAudioRecording();
+                      }
+
                       // Mark as read locally immediately for smooth UI transition
                       if (c.unread_count) {
                         c.unread_count = 0;
@@ -1549,15 +1708,15 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
                         {unanswered ? (
                           <span style={{
-                            fontSize: '0.6rem',
-                            padding: '0.1rem 0.35rem',
+                            fontSize: '0.62rem',
+                            padding: '0.15rem 0.45rem',
                             borderRadius: '4px',
-                            fontWeight: 800,
-                            backgroundColor: '#fee2e2',
-                            color: '#dc2626',
-                            border: '1px solid #fca5a5'
+                            fontWeight: 900,
+                            backgroundColor: '#dc2626',
+                            color: '#ffffff',
+                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
                           }}>
-                            {slaTime || '⏱️ Sin respuesta'}
+                            🔴 PENDIENTE DE RESPUESTA {slaTime ? `(${slaTime})` : ''}
                           </span>
                         ) : (
                           <span style={{
@@ -1609,6 +1768,35 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   </div>
                 );
               })
+            )}
+
+            {hasMoreConvs && filteredConvs.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem 0.75rem 1.25rem 0.75rem' }}>
+                <button
+                  onClick={fetchMoreConversations}
+                  disabled={loadingMoreConvs}
+                  style={{
+                    width: '100%',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    padding: '0.55rem',
+                    borderRadius: '8px',
+                    backgroundColor: '#eff6ff',
+                    color: '#2563eb',
+                    border: '1px solid #bfdbfe',
+                    cursor: loadingMoreConvs ? 'wait' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.05rem' }}>expand_more</span>
+                  {loadingMoreConvs ? 'Cargando conversaciones anteriores...' : 'Cargar más conversaciones'}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -1667,6 +1855,47 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
                 {/* Top Action Buttons (Google Material Design - No Emojis) */}
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {/* Supervisor Unlock Button */}
+                  {selectedConv.labels?.includes('supervisor-lock') && ['superadmin', 'admin', 'supervisor'].includes(role || '') && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/unlock-supervisor`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                          });
+                          const data = await res.json();
+                          if (res.ok) {
+                            showToast('🔓 Conversación autorizada y desbloqueada para el vendedor.');
+                            setSelectedConv(prev => prev ? { ...prev, labels: (prev.labels || []).filter(l => l !== 'supervisor-lock') } : prev);
+                            fetchConversations(true);
+                          } else {
+                            throw new Error(data.error || 'Error desbloqueando conversación');
+                          }
+                        } catch (err: any) {
+                          showToast(err.message, 'error');
+                        }
+                      }}
+                      title="Autorizar y liberar la caja de texto para el vendedor asignado"
+                      style={{
+                        padding: '0.5rem 0.95rem',
+                        fontSize: '0.8rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#d97706',
+                        color: '#ffffff',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 8px rgba(217, 119, 6, 0.3)'
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '1.05rem' }}>lock_open</span>
+                      🔓 Desbloquear / Autorizar a Vendedor
+                    </button>
+                  )}
                   {selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? (
                     <button
                       onClick={() => handleToggleStatus('open')}
@@ -1866,6 +2095,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       senderName.toLowerCase().includes('sofía') || 
                       senderName.toLowerCase().includes('asistente') || 
                       senderName === 'Bot' ||
+                      (m.content && (m.content.includes('Sofía') || m.content.includes('🤖'))) ||
                       (!m.sender && !isPrivate)
                     );
 
@@ -2427,9 +2657,93 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       </div>
                     )}
 
+                    {/* Supervisor Strict Governance Lock Banner */}
+                    {(() => {
+                      const isSupervisorLocked = selectedConv?.labels?.includes('supervisor-lock');
+                      const isAdvisor = !['superadmin', 'admin', 'supervisor'].includes(role || '');
+                      if (isSupervisorLocked && isAdvisor) {
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.85rem 1rem',
+                            backgroundColor: '#fef2f2',
+                            border: '2px solid #ef4444',
+                            borderRadius: '10px',
+                            color: '#991b1b',
+                            fontSize: '0.84rem',
+                            fontWeight: 800,
+                            marginBottom: '0.65rem',
+                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)'
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: '#dc2626' }}>lock</span>
+                            <div>
+                              🔒 ATENCIÓN INTERVENIDA POR IA TRAS 10M DE INACTIVIDAD
+                              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#b91c1c', marginTop: '0.15rem' }}>
+                                La Oportunidad fue registrada en el CRM por Sofía IA. Contacta a tu Supervisor para autorizar y liberar el chat.
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    {/* Active Agent Typing Lock Warning Banner */}
+                    {(() => {
+                      const lock = selectedConv ? typingLocks[selectedConv.id.toString()] : null;
+                      const isOtherTyping = Boolean(lock && lock.expires_at > Date.now() && lock.agent_email && userEmail && lock.agent_email.toLowerCase().trim() !== userEmail.toLowerCase().trim());
+                      if (isOtherTyping) {
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.65rem',
+                            padding: '0.65rem 0.9rem',
+                            backgroundColor: '#fef3c7',
+                            border: '1px solid #f59e0b',
+                            borderRadius: '8px',
+                            color: '#92400e',
+                            fontSize: '0.82rem',
+                            fontWeight: 800,
+                            marginBottom: '0.5rem'
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: '#d97706' }}>warning</span>
+                            <div>
+                              ⚠️ <strong>{lock?.agent_name}</strong> está redactando una respuesta para este cliente en este momento.
+                              <div style={{ fontSize: '0.74rem', fontWeight: 600, color: '#b45309', marginTop: '0.1rem' }}>
+                                Por favor espera a que termine para no duplicar ni cruzar atención.
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     <textarea
+                      disabled={Boolean(selectedConv?.labels?.includes('supervisor-lock') && !['superadmin', 'admin', 'supervisor'].includes(role || ''))}
                       value={inputMessage}
-                      onChange={(e) => setInputMessage(e.target.value)}
+                      onFocus={() => {
+                        if (selectedConv && token) {
+                          fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/typing-lock`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ agent_name: localStorage.getItem('user_name') || userEmail?.split('@')[0] || 'Un asesor', agent_email: userEmail })
+                          }).catch(() => {});
+                        }
+                      }}
+                      onChange={(e) => {
+                        setInputMessage(e.target.value);
+                        if (selectedConv && token && e.target.value.length % 5 === 1) {
+                          fetch(`/api/control/${tenantId}/conversations/${selectedConv.id}/typing-lock`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ agent_name: localStorage.getItem('user_name') || userEmail?.split('@')[0] || 'Un asesor', agent_email: userEmail })
+                          }).catch(() => {});
+                        }
+                      }}
                       onPaste={(e) => {
                         const clipboardData = e.clipboardData;
                         if (!clipboardData) return;
@@ -2541,23 +2855,30 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         </button>
                       </div>
 
-                      <button
-                        type="submit"
-                        disabled={sendingMsg || (!inputMessage.trim() && !selectedFile)}
-                        style={{
-                          padding: '0.55rem 1.25rem',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: replyMode === 'private' ? '#d97706' : '#2563eb',
-                          color: '#ffffff',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          cursor: sendingMsg || (!inputMessage.trim() && !selectedFile) ? 'not-allowed' : 'pointer',
-                          boxShadow: '0 2px 8px rgba(37, 99, 235, 0.2)'
-                        }}
-                      >
-                        {sendingMsg ? 'Enviando...' : replyMode === 'private' ? 'Guardar Nota' : 'Enviar WhatsApp'}
-                      </button>
+                      {(() => {
+                        const lock = selectedConv ? typingLocks[selectedConv.id.toString()] : null;
+                        const isOtherTyping = Boolean(lock && lock.expires_at > Date.now() && lock.agent_email && userEmail && lock.agent_email.toLowerCase().trim() !== userEmail.toLowerCase().trim());
+
+                        return (
+                          <button
+                            type="submit"
+                            disabled={sendingMsg || isOtherTyping || (!inputMessage.trim() && !selectedFile)}
+                            style={{
+                              padding: '0.55rem 1.25rem',
+                              borderRadius: '8px',
+                              border: 'none',
+                              backgroundColor: isOtherTyping ? '#cbd5e1' : replyMode === 'private' ? '#d97706' : '#2563eb',
+                              color: '#ffffff',
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              cursor: sendingMsg || isOtherTyping || (!inputMessage.trim() && !selectedFile) ? 'not-allowed' : 'pointer',
+                              boxShadow: isOtherTyping ? 'none' : '0 2px 8px rgba(37, 99, 235, 0.2)'
+                            }}
+                          >
+                            {sendingMsg ? 'Enviando...' : isOtherTyping ? '🔒 Redactando otro asesor' : replyMode === 'private' ? 'Guardar Nota' : 'Enviar WhatsApp'}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </form>
                 </div>
@@ -2777,6 +3098,31 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Assignment History Timeline Card */}
+              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: '#2563eb' }}>history</span>
+                  Historial de Asignaciones:
+                </span>
+
+                {loadingHistory ? (
+                  <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontStyle: 'italic' }}>Cargando historial de atención...</span>
+                ) : assignmentHistory.length === 0 ? (
+                  <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontStyle: 'italic' }}>Sin cambios de asignación registrados.</span>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '160px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                    {assignmentHistory.map((item, idx) => (
+                      <div key={item.id || idx} style={{ fontSize: '0.73rem', padding: '0.4rem 0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', borderLeft: '3px solid #3b82f6' }}>
+                        <div style={{ fontWeight: 700, color: '#1e293b' }}>{item.content}</div>
+                        <div style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '0.15rem' }}>
+                          {new Date(item.timestamp).toLocaleString()} • por {item.user_name}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* CRM Pipeline Stage Selector */}

@@ -16,6 +16,7 @@ RUN npm run build
 
 # Stage 3: Runner
 FROM node:22-alpine AS runner
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY --from=backend-builder /app/backend/dist ./backend/dist
 COPY --from=backend-builder /app/backend/node_modules ./backend/node_modules

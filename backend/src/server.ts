@@ -107,14 +107,16 @@ function isWithinWorkingHours(kb: KnowledgeBase): { isOpen: boolean; currentTime
 
     if (dayOfWeek >= 1 && dayOfWeek <= 5) {
       // Mon-Fri
-      const startVal = parseTime(kb.mon_fri_start || '08:00');
-      const endVal = parseTime(kb.mon_fri_end || '17:30');
+      let startVal = parseTime(kb.mon_fri_start || '08:00');
+      let endVal = parseTime(kb.mon_fri_end || '17:30');
+      if (endVal < startVal && endVal < 720) endVal += 12 * 60;
       isOpen = currentTimeVal >= startVal && currentTimeVal <= endVal;
       ruleText = `Lunes a Viernes de ${kb.mon_fri_start} a ${kb.mon_fri_end}`;
     } else if (dayOfWeek === 6) {
       // Sat
-      const startVal = parseTime(kb.sat_start || '09:00');
-      const endVal = parseTime(kb.sat_end || '12:30');
+      let startVal = parseTime(kb.sat_start || '08:00');
+      let endVal = parseTime(kb.sat_end || '12:30');
+      if (endVal < startVal && endVal < 720) endVal += 12 * 60;
       isOpen = currentTimeVal >= startVal && currentTimeVal <= endVal;
       ruleText = `Sábados de ${kb.sat_start} a ${kb.sat_end}`;
     } else {
@@ -500,11 +502,24 @@ async function handleIncomingMessage(tenantId: string, conversationId: number, a
 
   // Assemble the lightweight dynamic system prompt with escalation rules and system prompt
   const fullSystemPrompt = `
+=== IDENTIDAD Y ROL OFICIAL ===
+Tu nombre es Sofía, la Asistente Virtual Oficial de SICSA Nicaragua.
+Atiendes a los clientes con amabilidad, educación y profesionalismo.
+
 ${config.system_prompt}
 
-=== INSTRUCCIONES ADICIONALES DE ESCALAMIENTO ===
+=== INSTRUCCIONES ADICIONALES DE ESCALAMIENTO Y CLASIFICACIÓN ===
 ${config.escalation_instructions || 'Usa tu criterio para escalar con la herramienta escalate_to_human si la consulta es un reclamo complejo o requiere atención humana.'}
-Si decides escalar, usa la herramienta o termina tu mensaje con [ESCALAR] si está abierto.
+
+=== EVALUACIÓN CONTEXTUAL DE INTENCIÓN (TALLER VS VENTAS) ===
+Analiza cuidadosamente la intención del cliente en la oración completa:
+1. ATENCIÓN COMERCIAL / VENTAS: Si el cliente solicita comprar equipos nuevos, accesorios, cotizar baterías externas o para UPS (ej: 12V 7Ah / 9Ah), precios de productos o promociones -> Responder en flujo comercial de Ventas.
+2. SERVICIO TÉCNICO / TALLER: Si el cliente menciona que su equipo no enciende, no retiene carga, requiere reemplazo o cambio de batería interna de laptop, mantenimiento técnico, garantía o diagnóstico -> Invocar de inmediato la herramienta escalate_to_human(reason: 'INTENT: TALLER') o incluir la palabra clave [ESCALAR_TALLER] al final de tu mensaje para transferir a Taller.
+
+=== REGISTRO AUTOMÁTICO DE OPORTUNIDAD EN CRM ===
+Si identificas una oportunidad o interés comercial del cliente (solicitud de precio, producto, cotización, batería, compra o reserva), SIEMPRE debes incluir al final de tu mensaje la etiqueta de comando:
+[CREAR_OPORTUNIDAD: Nombre o Producto | Valor Estimado $ | stage:prospecto]
+Ejemplo: [CREAR_OPORTUNIDAD: Cotización Batería UPS Forza 12V | 25 | stage:prospecto]
 
 === ESTADO ACTUAL DE ATENCIÓN ===
 - Estado de la Tienda: ${hours.statusDescription}
@@ -539,23 +554,74 @@ REGLAS DE TRANSFERENCIA A ASESOR:
     }
   }
 
-  // Check if AI response triggers human escalation
-  let shouldEscalate = aiResponse.includes('[ESCALAR]');
-  let escalationReason = "IA solicitó transferencia mediante palabra clave [ESCALAR] o invocación de herramienta.";
+  // Check for CRM Opportunity Creation command tag or commercial intent
+  const oppMatch = aiResponse.match(/\[CREAR_OPORTUNIDAD:\s*([^|\]]+)(?:\|\s*([^|\]]+))?(?:\|\s*([^|\]]+))?\]/i);
+  const isCommercialIntent = userMessage.toLowerCase().includes('precio') || 
+                             userMessage.toLowerCase().includes('cotiz') || 
+                             userMessage.toLowerCase().includes('cuanto cuesta') || 
+                             userMessage.toLowerCase().includes('bater') || 
+                             userMessage.toLowerCase().includes('ups') || 
+                             userMessage.toLowerCase().includes('comprar') || 
+                             userMessage.toLowerCase().includes('laptop');
+
+  if ((oppMatch || isCommercialIntent) && config.ai_auto_create_opportunities !== false) {
+    try {
+      const oppTitle = oppMatch ? oppMatch[1].trim() : `Cotización: ${userMessage.slice(0, 35)}`;
+      const oppValue = oppMatch && oppMatch[2] ? parseFloat(oppMatch[2].replace(/[^0-9.]/g, '')) || 50 : 50;
+      const oppStage = oppMatch && oppMatch[3] ? oppMatch[3].trim() : 'stage:prospecto';
+
+      // Check if opportunity already exists for this conversation to avoid duplicates
+      const existingRes = await configService.query(`SELECT id FROM crm_opportunities WHERE tenant_id = $1 AND conversation_id = $2`, [tenantId, conversationId.toString()]);
+      if (existingRes.rows.length === 0) {
+        const createdOpp = await controlService.createOpportunity(tenantId, {
+          contact_id: customerPhone || conversationId.toString(),
+          contact_name: customerPhone ? `Cliente WhatsApp (${customerPhone})` : 'Cliente WhatsApp',
+          contact_phone: customerPhone || '',
+          conversation_id: conversationId.toString(),
+          title: oppTitle,
+          value: oppValue,
+          currency: 'USD',
+          stage: oppStage,
+          assigned_agent_name: 'Sofía IA'
+        });
+        console.log(`[CRM Auto-Opp Created - Tenant: ${tenantId}] ID: ${createdOpp.id} - Title: ${oppTitle} - Value: $${oppValue}`);
+        controlService.broadcastSseEvent(tenantId, 'opportunity_created', createdOpp);
+      }
+    } catch (oppErr: any) {
+      console.error(`[Auto-Create Opportunity Error - Tenant: ${tenantId}]`, oppErr.message);
+    }
+  }
+
+  // Strip opportunity tag before sending to WhatsApp
+  aiResponse = aiResponse.replace(/\[CREAR_OPORTUNIDAD:[^\]]+\]/gi, '').trim();
+
+  // Check if AI response triggers human escalation (including Taller context)
+  let isTallerEscalation = aiResponse.includes('[ESCALAR_TALLER]');
+  let shouldEscalate = aiResponse.includes('[ESCALAR]') || isTallerEscalation;
+  let escalationReason = isTallerEscalation 
+    ? "IA identificó consulta de servicio técnico / reemplazo interno de batería y transfirió a TALLER."
+    : "IA solicitó transferencia mediante palabra clave [ESCALAR] o invocación de herramienta.";
+
   if (shouldEscalate) {
-    // Strip the escalation tag before posting to Chatwoot
-    aiResponse = aiResponse.replace('[ESCALAR]', '').trim();
+    // Strip the escalation tags before posting to Chatwoot
+    aiResponse = aiResponse.replace('[ESCALAR_TALLER]', '').replace('[ESCALAR]', '').trim();
+  }
+
+  // Format AI response with Sofía's transparent signature prefix
+  let formattedAiResponse = aiResponse;
+  if (!formattedAiResponse.startsWith('🤖')) {
+    formattedAiResponse = `🤖 *Sofía (Asistente IA SICSA)*:\n${aiResponse}`;
   }
 
   // 5. Send message back to Chatwoot
   try {
     const chatwootUrl = `${config.chatwoot_url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-    console.log(`[Chatwoot API - Tenant: ${tenantId}] Enviando respuesta a: ${chatwootUrl}`);
+    console.log(`[Chatwoot API - Tenant: ${tenantId}] Enviando respuesta de Sofía a: ${chatwootUrl}`);
     
     const chatwootRes = await axios.post(
       chatwootUrl,
       {
-        content: aiResponse,
+        content: formattedAiResponse,
         message_type: 'outgoing'
       },
       {
@@ -925,6 +991,45 @@ app.get('/api/control/:tenantId/conversations', authenticateToken, async (req: A
   }
 });
 
+// Broadcast agent typing lock event via SSE
+app.post('/api/control/:tenantId/conversations/:id/typing-lock', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const { agent_name, agent_email } = req.body;
+    controlService.broadcastSseEvent(tenantId, 'agent_typing_lock', {
+      conversation_id: id,
+      agent_name: agent_name || 'Un asesor',
+      agent_email: agent_email || '',
+      timestamp: Date.now()
+    });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Unlock supervisor lock on a conversation (Supervisor / Admin Only)
+app.post('/api/control/:tenantId/conversations/:id/unlock-supervisor', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const userRole = req.user?.role || '';
+    const isAdminOrSupervisor = ['superadmin', 'admin', 'supervisor'].includes(userRole);
+    if (!isAdminOrSupervisor) {
+      return res.status(403).json({ error: 'Solo un supervisor o administrador puede autorizar el desbloqueo de esta conversación.' });
+    }
+
+    await controlService.removeLabelFromConversation(tenantId, id, 'supervisor-lock');
+    controlService.broadcastSseEvent(tenantId, 'conversation_updated', {
+      id: parseInt(id),
+      conversation: { id: parseInt(id), labels: [] }
+    });
+
+    res.json({ success: true, message: 'Conversación autorizada y desbloqueada para el vendedor.' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Get messages for a specific conversation
 app.get('/api/control/:tenantId/conversations/:id/messages', authenticateToken, async (req: AuthRequest, res) => {
   try {
@@ -932,6 +1037,40 @@ app.get('/api/control/:tenantId/conversations/:id/messages', authenticateToken, 
     const before = req.query.before ? String(req.query.before) : undefined;
     const messages = await controlService.getConversationMessages(tenantId, id, before);
     res.json(messages);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get assignment history timeline for a conversation
+app.get('/api/control/:tenantId/conversations/:id/assignment-history', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const history = await controlService.getAssignmentHistory(tenantId, id);
+    res.json(history);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get quotes audit report (supports JSON & CSV download)
+app.get('/api/control/:tenantId/reports/quotes-audit', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const format = req.query.format as string;
+    const report = await controlService.getQuotesAuditReport(tenantId);
+
+    if (format === 'csv') {
+      let csv = 'ID,Cliente,Telefono,Cotizacion,Monto,Moneda,Etapa,Asesor_Asignado,Fecha_Creacion\n';
+      report.forEach((r: any) => {
+        csv += `"${r.id}","${(r.contact_name||'').replace(/"/g, '""')}","${r.contact_phone||''}","${(r.title||'').replace(/"/g, '""')}",${r.value||0},"${r.currency||'USD'}","${r.stage||''}","${(r.assigned_agent_name||'Sin Asignar').replace(/"/g, '""')}","${new Date(r.created_at).toLocaleString()}"\n`;
+      });
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="auditoria_cotizaciones.csv"');
+      return res.send(csv);
+    }
+
+    res.json(report);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

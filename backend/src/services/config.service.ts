@@ -31,6 +31,13 @@ export interface AgentConfig {
   waba_id?: string;
   meta_access_token?: string;
   meta_app_id?: string;
+  enable_idle_ai_rescue?: boolean;
+  idle_rescue_timeout_minutes?: number;
+  idle_rescue_strict_governance?: boolean;
+  idle_rescue_tag?: string;
+  default_view_only_mine?: boolean;
+  enable_typing_lock?: boolean;
+  use_direct_sql_messages?: boolean;
 }
 
 export interface User {
@@ -68,10 +75,14 @@ export interface KnowledgeBase {
 
 class ConfigService {
   private pool: pg.Pool;
+  private chatwootPool: pg.Pool;
 
   constructor() {
     const connectionString = process.env.DATABASE_URL;
     this.pool = new Pool(connectionString ? { connectionString } : {});
+
+    const chatwootDbUrl = process.env.CHATWOOT_DATABASE_URL || 'postgres://postgres:5510d4af325da01766d7@n8n_chatwoot-db.1.wncgm8vlnsjjsyw286hsgqbcb:5432/n8n';
+    this.chatwootPool = new Pool({ connectionString: chatwootDbUrl });
   }
 
   public getPool(): pg.Pool {
@@ -80,6 +91,10 @@ class ConfigService {
 
   public async query(text: string, params?: any[]) {
     return this.pool.query(text, params);
+  }
+
+  public async queryChatwootDb(text: string, params?: any[]) {
+    return this.chatwootPool.query(text, params);
   }
 
   async init() {
@@ -138,6 +153,13 @@ class ConfigService {
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS ai_enabled_during_hours BOOLEAN DEFAULT false`);
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS ai_enabled_after_hours BOOLEAN DEFAULT true`);
       await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS ai_auto_create_opportunities BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS enable_idle_ai_rescue BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS idle_rescue_timeout_minutes INTEGER DEFAULT 10`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS idle_rescue_strict_governance BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS idle_rescue_tag VARCHAR(100) DEFAULT 'sin-comision-ia'`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS default_view_only_mine BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS enable_typing_lock BOOLEAN DEFAULT true`);
+      await client.query(`ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS use_direct_sql_messages BOOLEAN DEFAULT true`);
 
       // 4. Conversation logs table
       await client.query(`

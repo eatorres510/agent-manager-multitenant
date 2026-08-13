@@ -1,5 +1,9 @@
 import axios from 'axios';
 import FormData from 'form-data';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { execSync } from 'child_process';
 import { configService } from './config.service.js';
 
 export interface LabelPayload {
@@ -77,6 +81,38 @@ export class ControlService {
       headers: { 'api_access_token': config.chatwoot_access_token }
     });
     return response.data;
+  }
+
+  async addLabelToConversation(tenantId: string, conversationId: string, label: string) {
+    try {
+      const config = await this.getTenantConfig(tenantId);
+      const getUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}`;
+      const convRes = await axios.get(getUrl, { headers: { 'api_access_token': config.chatwoot_access_token } });
+      const currentLabels: string[] = convRes.data?.labels || [];
+      if (!currentLabels.includes(label)) {
+        const newLabels = [...currentLabels, label];
+        const postUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/labels`;
+        await axios.post(postUrl, { labels: newLabels }, { headers: { 'api_access_token': config.chatwoot_access_token, 'Content-Type': 'application/json' } });
+      }
+    } catch (e: any) {
+      console.error(`[Add Label Error - Tenant: ${tenantId}]`, e.message);
+    }
+  }
+
+  async removeLabelFromConversation(tenantId: string, conversationId: string, label: string) {
+    try {
+      const config = await this.getTenantConfig(tenantId);
+      const getUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}`;
+      const convRes = await axios.get(getUrl, { headers: { 'api_access_token': config.chatwoot_access_token } });
+      const currentLabels: string[] = convRes.data?.labels || [];
+      if (currentLabels.includes(label)) {
+        const newLabels = currentLabels.filter(l => l !== label);
+        const postUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${conversationId}/labels`;
+        await axios.post(postUrl, { labels: newLabels }, { headers: { 'api_access_token': config.chatwoot_access_token, 'Content-Type': 'application/json' } });
+      }
+    } catch (e: any) {
+      console.error(`[Remove Label Error - Tenant: ${tenantId}]`, e.message);
+    }
   }
 
   // --- CHANNELS / INBOXES MANAGEMENT ---
@@ -348,69 +384,80 @@ export class ControlService {
     }
   }
 
-  async getConversations(tenantId: string, status: string = 'all', _page?: number) {
+  async getConversations(tenantId: string, status: string = 'all', _page: number = 1) {
     const cacheKey = `${tenantId}_${status}`;
     const now = Date.now();
 
-    // 5s Fast Cache: Return immediately in 2ms if fresh
-    if (this.convCache[cacheKey] && (now - this.convCache[cacheKey].timestamp) < 15000) {
+    if (this.convCache[cacheKey] && (now - this.convCache[cacheKey].timestamp) < 5000) {
       return this.convCache[cacheKey].data;
     }
 
-    const config = await this.getTenantConfig(tenantId);
-    const apiToken = config.chatwoot_access_token;
-    const accountId = config.chatwoot_account_id;
-    const chatwootUrl = config.chatwoot_url.replace(/\/$/, '');
-
-    const fetchStatusConvs = async (st: string) => {
-      let statusList: any[] = [];
-      const maxPages = 3; // Fetch up to 75 conversations per status (3 pages × 25) — reduces Chatwoot API load by 67%
-      for (let p = 1; p <= maxPages; p++) {
-        try {
-          const url = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations?status=${st}&page=${p}`;
-          const res = await axios.get(url, {
-            headers: { 'api_access_token': apiToken },
-            timeout: 5000
-          });
-          const payload = res.data.data?.payload || res.data.payload || [];
-          if (Array.isArray(payload) && payload.length > 0) {
-            for (const c of payload) {
-              if (!statusList.some(existing => existing.id === c.id)) {
-                statusList.push(c);
-              }
-            }
-            if (payload.length < 25) break; // Last page reached
-          } else {
-            break;
-          }
-        } catch (e) {
-          break;
-        }
-      }
-      return statusList;
-    };
-
     try {
-      let allConvs: any[] = [];
-      if (status === 'all') {
-        // Fetch open & pending in parallel (super fast)
-        const [openConvs, pendingConvs, resolvedConvs] = await Promise.all([
-          fetchStatusConvs('open'),
-          fetchStatusConvs('pending'),
-          fetchStatusConvs('resolved')
-        ]);
-        
-        const combined = [...openConvs, ...pendingConvs, ...resolvedConvs];
-        for (const c of combined) {
-          if (!allConvs.some(existing => existing.id === c.id)) {
-            allConvs.push(c);
-          }
-        }
-      } else {
-        allConvs = await fetchStatusConvs(status);
-      }
+      const config = await this.getTenantConfig(tenantId);
+      const accountId = config.chatwoot_account_id;
 
-      // Merge historical July leads & CRM opportunities if not present in Chatwoot conversations
+      // Status mapping: Chatwoot DB status enum (0: open, 1: resolved, 2: pending, 3: snoozed)
+      let statusFilter = '';
+      if (status === 'open') statusFilter = 'AND c.status = 0';
+      else if (status === 'resolved') statusFilter = 'AND c.status = 1';
+      else if (status === 'pending') statusFilter = 'AND c.status = 2';
+
+      const sql = `
+        SELECT c.id, c.display_id, c.status, c.last_activity_at, c.created_at, c.cached_label_list,
+               c.contact_last_seen_at, c.agent_last_seen_at,
+               ct.id as contact_id, ct.name as contact_name, ct.phone_number as contact_phone, ct.email as contact_email,
+               u.id as assignee_id, u.name as assignee_name, u.email as assignee_email,
+               (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) as last_msg_content,
+               (SELECT m.message_type FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) as last_msg_type,
+               (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) as last_msg_created_at
+        FROM conversations c
+        LEFT JOIN contacts ct ON c.contact_id = ct.id
+        LEFT JOIN users u ON c.assignee_id = u.id
+        WHERE c.account_id = $1 ${statusFilter}
+        ORDER BY c.last_activity_at DESC;
+      `;
+
+      const dbRes = await configService.queryChatwootDb(sql, [accountId]);
+      const statusMap: Record<number, string> = { 0: 'open', 1: 'resolved', 2: 'pending', 3: 'snoozed' };
+
+      let allConvs: any[] = dbRes.rows.map(row => {
+        const labels = row.cached_label_list ? row.cached_label_list.split(',').map((l: string) => l.trim()).filter(Boolean) : [];
+        const lastActivityMs = row.last_activity_at ? new Date(row.last_activity_at).getTime() : new Date(row.created_at).getTime();
+
+        const contactSeen = row.contact_last_seen_at ? new Date(row.contact_last_seen_at).getTime() : 0;
+        const agentSeen = row.agent_last_seen_at ? new Date(row.agent_last_seen_at).getTime() : 0;
+        const isUnread = row.last_msg_type === 0 && contactSeen > agentSeen;
+
+        return {
+          id: row.display_id || row.id,
+          display_id: row.display_id || row.id,
+          status: statusMap[row.status] || 'open',
+          unread_count: isUnread ? 1 : 0,
+          last_activity_at: lastActivityMs,
+          timestamp: lastActivityMs,
+          created_at: new Date(row.created_at).getTime(),
+          labels: labels,
+          meta: {
+            sender: {
+              name: row.contact_name || `Cliente #${row.display_id}`,
+              phone_number: row.contact_phone || '',
+              email: row.contact_email || ''
+            },
+            assignee: row.assignee_name ? {
+              id: row.assignee_id,
+              name: row.assignee_name,
+              email: row.assignee_email || ''
+            } : undefined,
+            last_message: row.last_msg_content ? {
+              content: row.last_msg_content,
+              message_type: row.last_msg_type,
+              created_at: row.last_msg_created_at ? new Date(row.last_msg_created_at).getTime() : lastActivityMs
+            } : undefined
+          }
+        };
+      });
+
+      // Merge July historical CRM leads & workshop appointments
       try {
         const oppsRes = await configService.query(
           `SELECT id, contact_name, contact_phone, title, value, currency, stage, assigned_agent_name, created_at, updated_at 
@@ -455,7 +502,6 @@ export class ControlService {
           }
         }
 
-        // Merge historical July workshop appointments
         const apptsRes = await configService.query(
           `SELECT id, customer_name, customer_phone, appointment_date, service, created_at 
            FROM appointments 
@@ -498,22 +544,9 @@ export class ControlService {
         console.error('[Merge July Leads Error]', err.message);
       }
 
-      const getNormalizedTime = (c: any) => {
-        let ts = c.last_activity_at || c.timestamp || c.created_at || 0;
-        if (typeof ts === 'string') {
-          const parsed = new Date(ts).getTime();
-          ts = isNaN(parsed) ? 0 : parsed;
-        }
-        if (typeof ts === 'number' && ts < 20000000000) {
-          ts = ts * 1000; // Convert seconds to milliseconds
-        }
-        return ts;
-      };
+      // Sort strictly chronologically by time received (newest first)
+      allConvs.sort((a, b) => (b.last_activity_at || 0) - (a.last_activity_at || 0));
 
-      // Sort conversations so newest message activity appears AT THE TOP!
-      allConvs.sort((a, b) => getNormalizedTime(b) - getNormalizedTime(a));
-
-      // Save to fast in-memory cache
       this.convCache[cacheKey] = { data: allConvs, timestamp: now };
       return allConvs;
     } catch (err: any) {
@@ -538,6 +571,65 @@ export class ControlService {
     } catch (err: any) {
       return { success: false, error: err.message };
     }
+  }
+
+  async getConversationMessagesDirectSql(tenantId: string, conversationId: string, beforeId?: string) {
+    const config = await this.getTenantConfig(tenantId);
+    const accountId = config.chatwoot_account_id;
+    const numericConvId = await this.resolveDisplayId(tenantId, conversationId);
+
+    let beforeFilter = '';
+    const queryParams: any[] = [accountId, numericConvId];
+    if (beforeId && !isNaN(parseInt(beforeId))) {
+      queryParams.push(parseInt(beforeId));
+      beforeFilter = `AND m.id < $${queryParams.length}`;
+    }
+
+    const sql = `
+      SELECT sub.* FROM (
+        SELECT 
+          m.id,
+          m.content,
+          m.message_type,
+          m.private,
+          m.created_at,
+          u.name AS sender_name,
+          u.email AS sender_email,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'id', att.id,
+                'file_type', CASE WHEN att.file_type = 1 THEN 'audio' WHEN att.file_type = 0 THEN 'image' ELSE 'file' END,
+                'data_url', att.data_url,
+                'thumb_url', att.data_url,
+                'fallback_title', att.fallback_title
+              )
+            ) FILTER (WHERE att.id IS NOT NULL), '[]'
+          ) AS attachments
+        FROM messages m
+        LEFT JOIN users u ON m.sender_id = u.id AND m.sender_type = 'User'
+        LEFT JOIN attachments att ON att.message_id = m.id
+        WHERE m.account_id = $1 AND m.conversation_id = $2 ${beforeFilter}
+        GROUP BY m.id, u.name, u.email
+        ORDER BY m.created_at DESC
+        LIMIT 100
+      ) sub
+      ORDER BY sub.created_at ASC;
+    `;
+
+    const dbRes = await configService.queryChatwootDb(sql, queryParams);
+    return dbRes.rows.map(row => {
+      const createdMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+      return {
+        id: row.id,
+        content: row.content || '',
+        message_type: row.message_type,
+        private: row.private || false,
+        created_at: createdMs,
+        sender: row.sender_name ? { name: row.sender_name, email: row.sender_email } : undefined,
+        attachments: row.attachments || []
+      };
+    });
   }
 
   async getConversationMessages(tenantId: string, conversationId: string, beforeId?: string) {
@@ -576,6 +668,19 @@ export class ControlService {
     }
 
     const config = await this.getTenantConfig(tenantId);
+
+    // Punto 1: Ultra-Fast Direct SQL Query with Real-time Fallback to Chatwoot HTTP API
+    if (config.use_direct_sql_messages !== false) {
+      try {
+        const sqlMessages = await this.getConversationMessagesDirectSql(tenantId, conversationId, beforeId);
+        if (sqlMessages && sqlMessages.length > 0) {
+          return sqlMessages;
+        }
+      } catch (sqlErr: any) {
+        console.error(`[SQL Messages Fallback to HTTP - Tenant: ${tenantId}]`, sqlErr.message);
+      }
+    }
+
     const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
     const baseUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/messages`;
 
@@ -679,31 +784,18 @@ export class ControlService {
     if (!convId) return String(convId);
     try {
       const config = await this.getTenantConfig(tenantId);
-      const { Client } = require('pg');
-      const db = new Client({
-        host: process.env.CHATWOOT_DB_HOST || 'n8n_chatwoot-db',
-        port: parseInt(process.env.CHATWOOT_DB_PORT || '5432'),
-        user: process.env.CHATWOOT_DB_USER || 'postgres',
-        password: process.env.CHATWOOT_DB_PASSWORD || '5510d4af325da01766d7',
-        database: process.env.CHATWOOT_DB_NAME || 'n8n'
-      });
-      await db.connect();
-      
       const target = parseInt(String(convId));
       if (!isNaN(target)) {
-        const res = await db.query(
+        const res = await configService.queryChatwootDb(
           'SELECT display_id FROM conversations WHERE account_id = $1 AND (display_id = $2 OR id = $2) ORDER BY CASE WHEN display_id = $2 THEN 1 ELSE 2 END LIMIT 1',
           [config.chatwoot_account_id, target]
         );
-        await db.end();
         if (res.rows.length > 0 && res.rows[0].display_id) {
           return res.rows[0].display_id.toString();
         }
-      } else {
-        await db.end();
       }
-    } catch (e) {
-      // Fallback to original convId
+    } catch (e: any) {
+      console.error('[Resolve Display ID Error]', e.message);
     }
     return String(convId);
   }
@@ -719,9 +811,46 @@ export class ControlService {
       if (content) form.append('content', content);
       form.append('message_type', 'outgoing');
       form.append('private', isPrivate ? 'true' : 'false');
-      form.append('attachments[]', file.buffer, {
-        filename: file.originalname,
-        contentType: file.mimetype
+
+      let bufferToSend = file.buffer;
+      let filename = file.originalname || 'attachment';
+      let contentType = file.mimetype || 'application/octet-stream';
+
+      // Transcode Chrome WebM/audio recordings to standard MP3 using ffmpeg for Meta WhatsApp Cloud API compatibility
+      const isAudioFile = contentType.startsWith('audio/') || 
+                          filename.toLowerCase().includes('nota_de_voz') || 
+                          filename.toLowerCase().endsWith('.webm') || 
+                          filename.toLowerCase().endsWith('.ogg') || 
+                          filename.toLowerCase().endsWith('.wav');
+      if (isAudioFile) {
+        try {
+          const tmpDir = os.tmpdir();
+          const uniqueAudioName = `voice_note_conv${targetDisplayId}_${Date.now()}`;
+          const inPath = path.join(tmpDir, `${uniqueAudioName}.webm`);
+          const outPath = path.join(tmpDir, `${uniqueAudioName}.ogg`);
+
+          fs.writeFileSync(inPath, file.buffer);
+          // Transcode using Meta WhatsApp standard: OGG container with Opus codec at 48kHz mono 32kbps
+          execSync(`ffmpeg -y -i "${inPath}" -c:a libopus -b:a 32k -ar 48000 -ac 1 "${outPath}"`, { timeout: 8000 });
+
+          if (fs.existsSync(outPath) && fs.statSync(outPath).size > 0) {
+            bufferToSend = fs.readFileSync(outPath);
+            filename = `${uniqueAudioName}.ogg`;
+            contentType = 'audio/ogg; codecs=opus';
+            console.log(`[Audio Transcode Success] Convertido a OGG/Opus Nativo WhatsApp 48kHz (${bufferToSend.length} bytes)`);
+          }
+          try { fs.unlinkSync(inPath); } catch (e) {}
+          try { fs.unlinkSync(outPath); } catch (e) {}
+        } catch (err: any) {
+          console.error('[Audio Transcode Fallback]', err.message);
+          filename = `voice_note_conv${targetDisplayId}_${Date.now()}.ogg`;
+          contentType = 'audio/ogg; codecs=opus';
+        }
+      }
+
+      form.append('attachments[]', bufferToSend, {
+        filename: filename,
+        contentType: contentType
       });
 
       response = await axios.post(url, form, {
@@ -886,8 +1015,8 @@ export class ControlService {
     });
 
     // Synchronize CRM Opportunity assigned_agent_name
+    let agentName = 'Sin Asignar';
     try {
-      let agentName = 'Sin Asignar';
       if (targetAssigneeId) {
         const agents = await this.getAgents(tenantId);
         const assignedAgent = agents.find((a: any) => a.id === targetAssigneeId);
@@ -906,7 +1035,77 @@ export class ControlService {
     }
 
     this.clearTenantCache(tenantId);
+
+    // Broadcast SSE push event to all connected web clients in real-time
+    this.broadcastSseEvent(tenantId, 'conversation_reassigned', {
+      conversation_id: parseInt(conversationId),
+      display_id: targetDisplayId,
+      conversation: {
+        id: parseInt(conversationId),
+        display_id: targetDisplayId,
+        status: 'open',
+        meta: {
+          assignee: {
+            id: targetAssigneeId,
+            name: agentName,
+            email: assigneeEmail
+          }
+        }
+      }
+    });
+
     return response.data;
+  }
+
+  async getAssignmentHistory(tenantId: string, conversationId: string) {
+    try {
+      const config = await this.getTenantConfig(tenantId);
+      const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
+
+      const convRes = await configService.queryChatwootDb(
+        'SELECT id FROM conversations WHERE account_id = $1 AND (id = $2 OR display_id = $2) LIMIT 1',
+        [config.chatwoot_account_id, isNaN(Number(targetDisplayId)) ? 0 : Number(targetDisplayId)]
+      );
+      const internalId = convRes.rows[0]?.id;
+      if (!internalId) return [];
+
+      const sql = `
+        SELECT m.id, m.content, m.created_at, m.message_type, u.name as user_name
+        FROM messages m
+        LEFT JOIN users u ON m.sender_id = u.id
+        WHERE m.conversation_id = $1 
+          AND (m.message_type = 2 OR m.content LIKE '%Asignad%' OR m.content LIKE '%agregó%' OR m.content LIKE '%agrego%')
+        ORDER BY m.id DESC LIMIT 50;
+      `;
+      const res = await configService.queryChatwootDb(sql, [internalId]);
+
+      return res.rows.map(r => ({
+        id: r.id,
+        content: r.content,
+        timestamp: new Date(r.created_at).getTime(),
+        user_name: r.user_name || 'Sistema'
+      }));
+    } catch (err: any) {
+      console.error('[Get Assignment History Error]', err.message);
+      return [];
+    }
+  }
+
+  async getQuotesAuditReport(tenantId: string) {
+    try {
+      const sql = `
+        SELECT o.id, o.contact_name, o.contact_phone, o.title, o.value, o.currency, o.stage,
+               o.assigned_agent_name, o.created_at, o.updated_at
+        FROM crm_opportunities o
+        WHERE o.tenant_id = $1
+        ORDER BY o.created_at DESC;
+      `;
+      const res = await configService.query(sql, [tenantId]);
+      return res.rows;
+    } catch (err: any) {
+      console.error('[Quotes Audit Report Error]', err.message);
+      return [];
+    }
   }
 
   async deleteConversation(tenantId: string, conversationId: string) {
