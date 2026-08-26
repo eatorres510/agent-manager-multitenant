@@ -2088,7 +2088,7 @@ function App() {
         flexDirection: 'column',
         minHeight: '100vh',
         boxSizing: 'border-box',
-        backgroundColor: '#F8FAFC',
+        backgroundColor: 'var(--surface-canvas)',
         transition: 'margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
         {/* Top Header bar with Impeccable Telemetry & Dark Mode Switch */}

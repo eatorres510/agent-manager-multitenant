@@ -338,9 +338,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
             style={{
               padding: '0.45rem 0.75rem',
               borderRadius: '7px',
-              border: '1px solid #cbd5e1',
-              backgroundColor: fitToScreen ? '#eff6ff' : '#ffffff',
-              color: fitToScreen ? '#2563eb' : '#475569',
+              border: '1px solid var(--border-subtle)',
+              backgroundColor: fitToScreen ? 'var(--color-accent-subtle)' : 'var(--surface-card)',
+              color: fitToScreen ? 'var(--color-accent-text)' : 'var(--text-secondary)',
               fontWeight: 700,
               fontSize: '0.75rem',
               cursor: 'pointer',
@@ -357,18 +357,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
           </button>
 
           {!fitToScreen && (
-            <div style={{ display: 'flex', gap: '0.2rem', backgroundColor: '#f8fafc', padding: '0.15rem', borderRadius: '7px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', gap: '0.2rem', backgroundColor: 'var(--surface-subtle)', padding: '0.15rem', borderRadius: '7px', border: '1px solid var(--border-subtle)' }}>
               <button
                 onClick={() => handleScroll('left')}
                 title="Desplazar columnas a la izquierda"
-                style={{ padding: '0.35rem 0.5rem', borderRadius: '5px', border: 'none', backgroundColor: '#ffffff', color: '#0b2b4c', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                style={{ padding: '0.35rem 0.5rem', borderRadius: '5px', border: 'none', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>chevron_left</span>
               </button>
               <button
                 onClick={() => handleScroll('right')}
                 title="Desplazar columnas a la derecha"
-                style={{ padding: '0.35rem 0.5rem', borderRadius: '5px', border: 'none', backgroundColor: '#ffffff', color: '#0b2b4c', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                style={{ padding: '0.35rem 0.5rem', borderRadius: '5px', border: 'none', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>chevron_right</span>
               </button>
@@ -385,7 +385,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
               padding: '0.5rem 1.1rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: activePipeline === 'b2b' ? '#0b2b4c' : '#2563eb',
+              background: 'var(--gradient-primary)',
               color: '#ffffff',
               fontWeight: 800,
               fontSize: '0.82rem',
@@ -393,7 +393,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
               display: 'flex',
               alignItems: 'center',
               gap: '0.35rem',
-              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)',
+              boxShadow: '0 2px 8px rgba(142, 36, 208, 0.28)',
               flexShrink: 0
             }}
           >
@@ -406,9 +406,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
             style={{
               padding: '0.5rem 0.65rem',
               borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              backgroundColor: '#ffffff',
-              color: '#0b2b4c',
+              border: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--surface-card)',
+              color: 'var(--text-primary)',
               fontWeight: 700,
               fontSize: '0.8rem',
               cursor: 'pointer',

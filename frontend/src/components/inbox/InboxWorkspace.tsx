@@ -2233,22 +2233,22 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           maxWidth: '78%',
                           padding: '0.85rem 1.15rem',
                           borderRadius: isIncoming ? '14px 14px 14px 2px' : '14px 14px 2px 14px',
-                          backgroundColor: isPrivate
-                            ? 'rgba(255, 205, 52, 0.12)'
+                          background: isPrivate
+                            ? 'var(--status-warning-bg)'
                             : isIncoming
-                              ? 'var(--surface-subtle)'
+                              ? 'var(--surface-card)'
                               : isBot
-                                ? 'rgba(0, 208, 132, 0.12)'
+                                ? 'var(--status-success-bg)'
                                 : 'var(--gradient-primary)',
                           border: isPrivate
-                            ? '1px solid rgba(255, 205, 52, 0.35)'
+                            ? '1px solid var(--status-warning-border)'
                             : isIncoming
                               ? '1px solid var(--border-subtle)'
                               : isBot
-                                ? '1px solid rgba(0, 208, 132, 0.3)'
+                                ? '1px solid var(--status-success-border)'
                                 : 'none',
                           color: isPrivate
-                            ? 'var(--status-warning-solid)'
+                            ? 'var(--status-warning-text)'
                             : isIncoming
                               ? 'var(--text-primary)'
                               : isBot
@@ -2263,11 +2263,11 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           <span style={{
                             fontWeight: 800,
                             color: isPrivate
-                              ? 'var(--status-warning-solid)'
+                              ? 'var(--status-warning-text)'
                               : isIncoming
                                 ? 'var(--text-secondary)'
                                 : isBot
-                                  ? 'var(--status-success-solid)'
+                                  ? 'var(--status-success-text)'
                                   : '#FFFFFF',
                             display: 'flex',
                             alignItems: 'center',
@@ -2610,7 +2610,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                             gap: '0.25rem',
                             marginTop: '0.35rem',
                             fontSize: '0.68rem',
-                            color: !isIncoming && !isBot && !isPrivate ? 'rgba(255,255,255,0.75)' : '#64748b',
+                            color: !isIncoming && !isBot && !isPrivate ? 'rgba(255,255,255,0.85)' : 'var(--text-muted)',
                             fontWeight: 600
                           }}>
                             <span>{formatMessageTime(m.created_at)}</span>
