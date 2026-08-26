@@ -744,7 +744,7 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
         })()}
       </div>
 
-      {/* MODAL 1: Continuar Seguimiento */}
+      {/* MODAL 1: Registrar Seguimiento */}
       {followingUpOpp && (
         <div style={{
           position: 'fixed',
@@ -752,30 +752,30 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(11, 43, 76, 0.7)',
-          backdropFilter: 'blur(4px)',
+          backgroundColor: 'rgba(16, 2, 29, 0.75)',
+          backdropFilter: 'blur(6px)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           zIndex: 999,
           padding: '1.5rem'
         }}>
-          <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '550px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+          <div style={{ backgroundColor: 'var(--surface-card)', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '550px', boxShadow: 'var(--shadow-card)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#0b2b4c', fontSize: '1.1rem', fontWeight: 800 }}>
+                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 800 }}>
                   Registrar Seguimiento de Actividad
                 </h3>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                  Oportunidad: <strong>{followingUpOpp.title}</strong> ({followingUpOpp.contact_name})
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Oportunidad: <strong style={{ color: 'var(--color-accent)' }}>{followingUpOpp.title}</strong> ({followingUpOpp.contact_name})
                 </p>
               </div>
-              <button onClick={() => setFollowingUpOpp(null)} style={{ border: 'none', background: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setFollowingUpOpp(null)} style={{ border: 'none', background: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
             </div>
 
             <form onSubmit={handleLogFollowupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               <div className="form-group">
-                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                   Nota del Seguimiento (Resultados de la llamada / chat / correo)
                 </label>
                 <textarea
@@ -784,27 +784,27 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                   placeholder="Se realizó llamada telefónica. El cliente solicitó ajuste de cotización agregando 2 laptops. Reagendado."
                   required
                   rows={3}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                 <div className="form-group">
-                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Próxima Fecha de Seguimiento</label>
+                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Próxima Fecha de Seguimiento</label>
                   <input
                     type="date"
                     value={nextDate}
                     onChange={(e) => setNextDate(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)' }}
                   />
                 </div>
 
                 <div className="form-group">
-                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Actualizar Etapa del CRM</label>
+                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Actualizar Etapa del CRM</label>
                   <select
                     value={newStage}
                     onChange={(e) => setNewStage(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)' }}
                   >
                     <option value="stage:prospecto">1. Prospecto / Lead IA</option>
                     <option value="stage:interesado">2. Interesado en Producto</option>
@@ -819,14 +819,14 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setFollowingUpOpp(null)}
-                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={submittingFollowup}
-                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#10b981', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: 'var(--gradient-primary)', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
                   {submittingFollowup ? 'Guardando...' : 'Guardar Seguimiento'}
                 </button>
@@ -844,71 +844,71 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(11, 43, 76, 0.7)',
-          backdropFilter: 'blur(4px)',
+          backgroundColor: 'rgba(16, 2, 29, 0.75)',
+          backdropFilter: 'blur(6px)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           zIndex: 999,
           padding: '1.5rem'
         }}>
-          <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '580px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+          <div style={{ backgroundColor: 'var(--surface-card)', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '580px', boxShadow: 'var(--shadow-card)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#0b2b4c', fontSize: '1.1rem', fontWeight: 800 }}>
+                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 800 }}>
                   Editar Oportunidad CRM (ID: #{editingOpp.id})
                 </h3>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   Modifica los detalles financieros y de seguimiento de este prospecto.
                 </p>
               </div>
-              <button onClick={() => setEditingOpp(null)} style={{ border: 'none', background: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setEditingOpp(null)} style={{ border: 'none', background: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
             </div>
 
             <form onSubmit={handleSaveEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                 <div className="form-group">
-                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Nombre del Cliente</label>
+                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Nombre del Cliente</label>
                   <input
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     required
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)' }}
                   />
                 </div>
 
                 <div className="form-group">
-                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Monto Oportunidad ($ USD)</label>
+                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Monto Oportunidad ($ USD)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     required
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 700 }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', fontFamily: 'monospace', fontWeight: 700 }}
                   />
                 </div>
               </div>
 
               <div className="form-group">
-                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Título / Producto Requerido</label>
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Título / Producto Requerido</label>
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   required
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)' }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                 <div className="form-group">
-                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Etapa del Pipeline</label>
+                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Etapa del Pipeline</label>
                   <select
                     value={editStage}
                     onChange={(e) => setEditStage(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)' }}
                   >
                     <option value="stage:prospecto">1. Prospecto / Lead IA</option>
                     <option value="stage:interesado">2. Interesado en Producto</option>
@@ -921,23 +921,23 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Próxima Fecha Seguimiento</label>
+                  <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Próxima Fecha Seguimiento</label>
                   <input
                     type="date"
                     value={editNextDate}
                     onChange={(e) => setEditNextDate(e.target.value)}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)' }}
                   />
                 </div>
               </div>
 
               <div className="form-group">
-                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Notas del Asesor</label>
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Notas del Asesor</label>
                 <textarea
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   rows={3}
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
                 />
               </div>
 
@@ -945,14 +945,14 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingOpp(null)}
-                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingEdit}
-                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#2563eb', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: 'var(--gradient-primary)', color: '#ffffff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
                   {savingEdit ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
@@ -970,30 +970,30 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(11, 43, 76, 0.7)',
-          backdropFilter: 'blur(4px)',
+          backgroundColor: 'rgba(16, 2, 29, 0.75)',
+          backdropFilter: 'blur(6px)',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           zIndex: 999,
           padding: '1.5rem'
         }}>
-          <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '500px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+          <div style={{ backgroundColor: 'var(--surface-card)', padding: '1.5rem', borderRadius: '16px', width: '100%', maxWidth: '500px', boxShadow: 'var(--shadow-card)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#0b2b4c', fontSize: '1.1rem', fontWeight: 800 }}>
+                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 800 }}>
                   Cerrar Oportunidad CRM
                 </h3>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                  Cliente: <strong>{closingOpp.contact_name}</strong> - ${closingOpp.value.toLocaleString()} USD
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Cliente: <strong style={{ color: 'var(--text-primary)' }}>{closingOpp.contact_name}</strong> - ${closingOpp.value.toLocaleString()} USD
                 </p>
               </div>
-              <button onClick={() => setClosingOpp(null)} style={{ border: 'none', background: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setClosingOpp(null)} style={{ border: 'none', background: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
             </div>
 
             <form onSubmit={handleSaveCloseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               <div className="form-group">
-                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Estado Final de la Oportunidad</label>
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Estado Final de la Oportunidad</label>
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.3rem' }}>
                   <button
                     type="button"
@@ -1002,9 +1002,9 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                       flex: 1,
                       padding: '0.75rem',
                       borderRadius: '8px',
-                      border: closeStatus === 'stage:ganado' ? '2px solid #10b981' : '1px solid #cbd5e1',
-                      backgroundColor: closeStatus === 'stage:ganado' ? '#ecfdf5' : '#ffffff',
-                      color: closeStatus === 'stage:ganado' ? '#047857' : '#475569',
+                      border: closeStatus === 'stage:ganado' ? '2px solid var(--status-success-solid)' : '1px solid var(--border-subtle)',
+                      backgroundColor: closeStatus === 'stage:ganado' ? 'var(--status-success-bg)' : 'var(--surface-subtle)',
+                      color: closeStatus === 'stage:ganado' ? 'var(--status-success-solid)' : 'var(--text-secondary)',
                       fontWeight: 800,
                       fontSize: '0.88rem',
                       cursor: 'pointer'
@@ -1020,9 +1020,9 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                       flex: 1,
                       padding: '0.75rem',
                       borderRadius: '8px',
-                      border: closeStatus === 'stage:perdido' ? '2px solid #ef4444' : '1px solid #cbd5e1',
-                      backgroundColor: closeStatus === 'stage:perdido' ? '#fef2f2' : '#ffffff',
-                      color: closeStatus === 'stage:perdido' ? '#b91c1c' : '#475569',
+                      border: closeStatus === 'stage:perdido' ? '2px solid var(--status-danger-solid)' : '1px solid var(--border-subtle)',
+                      backgroundColor: closeStatus === 'stage:perdido' ? 'var(--status-danger-bg)' : 'var(--surface-subtle)',
+                      color: closeStatus === 'stage:perdido' ? 'var(--status-danger-solid)' : 'var(--text-secondary)',
                       fontWeight: 800,
                       fontSize: '0.88rem',
                       cursor: 'pointer'
@@ -1034,14 +1034,14 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
               </div>
 
               <div className="form-group">
-                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0b2b4c' }}>Motivo / Nota de Cierre</label>
+                <label style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Motivo / Nota de Cierre</label>
                 <textarea
                   value={closeReason}
                   onChange={(e) => setCloseReason(e.target.value)}
                   placeholder={closeStatus === 'stage:ganado' ? "Cliente confirmó orden de compra e hizo depósito inicial." : "Cliente optó por competidor por tema de crédito."}
                   required
                   rows={3}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                 />
               </div>
 
@@ -1049,7 +1049,7 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setClosingOpp(null)}
-                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
                   Cancelar
                 </button>
@@ -1060,7 +1060,7 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                     padding: '0.6rem 1.5rem',
                     borderRadius: '8px',
                     border: 'none',
-                    backgroundColor: closeStatus === 'stage:ganado' ? '#10b981' : '#ef4444',
+                    backgroundColor: closeStatus === 'stage:ganado' ? 'var(--status-success-solid)' : 'var(--status-danger-solid)',
                     color: '#ffffff',
                     fontWeight: 800,
                     fontSize: '0.85rem',

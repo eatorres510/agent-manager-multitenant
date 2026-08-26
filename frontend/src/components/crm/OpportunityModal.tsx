@@ -277,36 +277,36 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(11, 43, 76, 0.55)',
+      backgroundColor: 'rgba(16, 2, 29, 0.75)',
       display: 'flex', justifyContent: 'center', alignItems: 'center',
       zIndex: 3000,
-      backdropFilter: 'blur(3px)'
+      backdropFilter: 'blur(6px)'
     }}>
       <form onSubmit={handleSubmit} style={{
-        backgroundColor: '#ffffff',
+        backgroundColor: 'var(--surface-card)',
         borderRadius: '16px',
         width: '600px',
         maxWidth: '94%',
         maxHeight: '92vh',
         overflowY: 'auto',
         padding: '1.75rem',
-        boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-        border: '1px solid #e2e8f0',
+        boxShadow: 'var(--shadow-card)',
+        border: '1px solid var(--border-subtle)',
         display: 'flex',
         flexDirection: 'column',
         gap: '1.1rem',
         fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif'
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.85rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.85rem' }}>
           <div>
-            <h3 style={{ margin: 0, color: '#0b2b4c', fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-              <span className="material-symbols-outlined" style={{ color: '#2563eb', fontSize: '1.35rem' }}>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)', fontSize: '1.35rem' }}>
                 {pipelineType === 'b2b' ? 'domain' : 'business_center'}
               </span>
               {initialData?.id ? 'Editar Oportunidad Comercial' : '+ Crear Oportunidad en Pipeline'}
             </h3>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem', display: 'block' }}>
               {pipelineType === 'b2b' ? '🏢 Oportunidad Corporativa / Empresas B2B' : '🛒 Oportunidad Retail / Clientes Particulares B2C'}
             </span>
           </div>
@@ -317,7 +317,7 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
-              color: '#64748B',
+              color: 'var(--text-muted)',
               fontSize: '1.25rem',
               fontWeight: 'bold'
             }}
@@ -330,10 +330,11 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          backgroundColor: '#f1f5f9',
+          backgroundColor: 'var(--surface-subtle)',
           padding: '0.25rem',
           borderRadius: '10px',
-          gap: '0.25rem'
+          gap: '0.25rem',
+          border: '1px solid var(--border-subtle)'
         }}>
           <button
             type="button"
@@ -345,8 +346,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               padding: '0.5rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: pipelineType === 'b2c' ? '#2563eb' : 'transparent',
-              color: pipelineType === 'b2c' ? '#ffffff' : '#64748b',
+              backgroundColor: pipelineType === 'b2c' ? 'var(--color-primary)' : 'transparent',
+              color: pipelineType === 'b2c' ? '#ffffff' : 'var(--text-muted)',
               fontWeight: 800,
               fontSize: '0.82rem',
               cursor: 'pointer',
@@ -371,8 +372,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               padding: '0.5rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: pipelineType === 'b2b' ? '#0b2b4c' : 'transparent',
-              color: pipelineType === 'b2b' ? '#ffffff' : '#64748b',
+              backgroundColor: pipelineType === 'b2b' ? 'var(--color-accent)' : 'transparent',
+              color: pipelineType === 'b2b' ? '#000000' : 'var(--text-muted)',
               fontWeight: 800,
               fontSize: '0.82rem',
               cursor: 'pointer',
@@ -390,22 +391,22 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
 
         {/* B2B COMPANY & CONTACT SELECTION SECTION */}
         {pipelineType === 'b2b' ? (
-          <div style={{ backgroundColor: '#eff6ff', padding: '1rem', borderRadius: '10px', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-            <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--color-accent)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>corporate_fare</span>
               Empresa y Contacto Decisor Asociado
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e3a8a' }}>
-                  Seleccionar Empresa <span style={{ color: '#dc2626' }}>*</span>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  Seleccionar Empresa <span style={{ color: 'var(--status-danger-solid)' }}>*</span>
                 </label>
                 <select
                   required
                   value={selectedCompanyId}
                   onChange={(e) => handleCompanyChange(e.target.value)}
-                  style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid #93c5fd', fontSize: '0.85rem', backgroundColor: '#fff', fontWeight: 700, color: '#0b2b4c' }}
+                  style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', fontSize: '0.85rem', backgroundColor: 'var(--surface-card)', fontWeight: 700, color: 'var(--text-primary)' }}
                 >
                   <option value="">-- Selecciona una Empresa --</option>
                   {companiesList.map(comp => (
@@ -417,14 +418,14 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e3a8a' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
                   Contacto que origina la oportunidad
                 </label>
                 <select
                   value={selectedContactId}
                   onChange={(e) => handleContactChange(e.target.value)}
                   disabled={!selectedCompanyId || companyContacts.length === 0}
-                  style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid #93c5fd', fontSize: '0.85rem', backgroundColor: '#fff', color: '#0b2b4c' }}
+                  style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', fontSize: '0.85rem', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)' }}
                 >
                   <option value="">{companyContacts.length === 0 ? '-- Sin contactos registrados --' : '-- Selecciona el Contacto --'}</option>
                   {companyContacts.map(cont => (
@@ -438,11 +439,11 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e3a8a' }}>Condición de Crédito / Pago</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Condición de Crédito / Pago</label>
                 <select
                   value={creditTerms}
                   onChange={(e) => setCreditTerms(e.target.value)}
-                  style={{ padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', backgroundColor: '#fff' }}
+                  style={{ padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', fontSize: '0.85rem', backgroundColor: 'var(--surface-card)', color: 'var(--color-accent)', fontWeight: 700 }}
                 >
                   <option value="Contado / Inmediato">Contado / Inmediato</option>
                   <option value="Crédito 15 días">Crédito 15 días</option>
@@ -453,38 +454,38 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e3a8a' }}>Fecha Estimada de Cierre</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Fecha Estimada de Cierre</label>
                 <input
                   type="date"
                   value={targetClosingDate}
                   onChange={(e) => setTargetClosingDate(e.target.value)}
-                  style={{ padding: '0.55rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  style={{ padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
                 />
               </div>
             </div>
           </div>
         ) : (
           /* B2C CONTACT INPUTS */
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', backgroundColor: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', backgroundColor: 'var(--surface-subtle)', padding: '0.85rem', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Nombre del Cliente</label>
+              <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Nombre del Cliente</label>
               <input
                 type="text"
                 value={contactNameInput}
                 onChange={(e) => setContactNameInput(e.target.value)}
                 placeholder="Ej: Erick Torres"
-                style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
               />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Teléfono / WhatsApp</label>
+              <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Teléfono / WhatsApp</label>
               <input
                 type="text"
                 value={contactPhoneInput}
                 onChange={(e) => setContactPhoneInput(e.target.value)}
                 placeholder="+505 8888 5707"
-                style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
               />
             </div>
           </div>
@@ -492,8 +493,8 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
 
         {/* Basic Fields */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-            Título del Proyecto / Oportunidad <span style={{ color: '#DC2626' }}>*</span>
+          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+            Título del Proyecto / Oportunidad <span style={{ color: 'var(--status-danger-solid)' }}>*</span>
           </label>
           <input
             type="text"
@@ -501,13 +502,13 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={pipelineType === 'b2b' ? "Ej: Suministro de 15 Laptops ASUS Core i7 + Configuración de Red" : "Ej: Compra de Laptop ASUS Vivobook"}
-            style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.88rem', color: '#0F172A', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-primary)', fontSize: '0.88rem', boxSizing: 'border-box' }}
           />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
               Monto Estimado ($ USD)
             </label>
             <input
@@ -516,18 +517,18 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="4500"
-              style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.88rem', boxSizing: 'border-box', fontWeight: 700, color: '#065F46' }}
+              style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', fontSize: '0.88rem', boxSizing: 'border-box', fontWeight: 700, color: 'var(--status-success-solid)' }}
             />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
               Etapa del Pipeline ({pipelineType.toUpperCase()})
             </label>
             <select
               value={stage}
               onChange={(e) => setStage(e.target.value)}
-              style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #CBD5E1', backgroundColor: '#fff', fontSize: '0.85rem', boxSizing: 'border-box', fontWeight: 700, color: '#0b2b4c' }}
+              style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', fontSize: '0.85rem', boxSizing: 'border-box', fontWeight: 700, color: 'var(--text-primary)' }}
             >
               {currentStages.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -537,13 +538,13 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
             Vendedor / Asesor Asignado
           </label>
           <select
             value={assignedAgent}
             onChange={(e) => setAssignedAgent(e.target.value)}
-            style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.88rem', color: '#0F172A', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-subtle)', fontSize: '0.88rem', color: 'var(--text-primary)', boxSizing: 'border-box' }}
           >
             <option value="Sin Asignar">Sin Asignar (Cola General)</option>
             {advisorsList && advisorsList.length > 0 ? (
@@ -570,19 +571,19 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
         </div>
 
         {/* SECTION: SEGUIMIENTO DE LA OPORTUNIDAD */}
-        <div style={{ backgroundColor: '#F8FAFC', padding: '1rem', borderRadius: '10px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0B2B4C', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: '#2563EB' }}>event_upcoming</span>
+        <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: 'var(--color-primary)' }}>event_upcoming</span>
             Próxima Acción de Seguimiento
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Tipo de Acción</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Tipo de Acción</label>
               <select
                 value={nextActionType}
                 onChange={(e) => setNextActionType(e.target.value)}
-                style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', backgroundColor: '#fff' }}
+                style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', fontSize: '0.82rem', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)' }}
               >
                 <option value="llamada">📞 Llamada Telefónica</option>
                 <option value="correo">✉️ Envío de Correo / Proforma</option>
@@ -592,42 +593,42 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Fecha y Hora Programada</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Fecha y Hora Programada</label>
               <input
                 type="datetime-local"
                 value={nextActionDate}
                 onChange={(e) => setNextActionDate(e.target.value)}
-                style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+                style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
               />
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Notas de la Acción</label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Notas de la Acción</label>
             <input
               type="text"
               value={nextActionNotes}
               onChange={(e) => setNextActionNotes(e.target.value)}
               placeholder="Ej: Llamar a Compras para confirmar recepción de proforma..."
-              style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+              style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
             />
           </div>
         </div>
 
         {/* SECTION: VENTA PERDIDA (IF APPLICABLE) */}
         {stage.includes('perdido') && (
-          <div style={{ backgroundColor: '#FEF2F2', padding: '1rem', borderRadius: '10px', border: '1px solid #FECACA', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#991B1B', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: '#DC2626' }}>report</span>
+          <div style={{ backgroundColor: 'var(--status-danger-bg)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--status-danger-border)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--status-danger-solid)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: 'var(--status-danger-solid)' }}>report</span>
               Motivo de Venta Perdida
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7F1D1D' }}>Motivo Principal</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--status-danger-solid)' }}>Motivo Principal</label>
               <select
                 value={lostReason}
                 onChange={(e) => setLostReason(e.target.value)}
-                style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid #FCA5A5', fontSize: '0.82rem', backgroundColor: '#fff' }}
+                style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--status-danger-border)', fontSize: '0.82rem', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)' }}
               >
                 <option value="Precio Alto / Competencia">Precio Alto / Compró con Competencia</option>
                 <option value="Sin Stock Inmediato">Sin Stock Inmediato</option>
@@ -639,13 +640,13 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7F1D1D' }}>Detalles Adicionales</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--status-danger-solid)' }}>Detalles Adicionales</label>
               <textarea
                 value={lostNotes}
                 onChange={(e) => setLostNotes(e.target.value)}
                 rows={2}
                 placeholder="Explicación detallada del motivo por el cual no se cerró el negocio..."
-                style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid #FCA5A5', fontSize: '0.82rem' }}
+                style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--status-danger-border)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
               />
             </div>
           </div>
@@ -659,9 +660,9 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
             style={{
               padding: '0.65rem 1.25rem',
               borderRadius: '8px',
-              border: '1px solid #CBD5E1',
-              backgroundColor: '#fff',
-              color: '#475569',
+              border: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--surface-subtle)',
+              color: 'var(--text-secondary)',
               fontWeight: 700,
               fontSize: '0.85rem',
               cursor: 'pointer'
@@ -677,12 +678,12 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
               padding: '0.65rem 1.5rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: '#2563EB',
+              background: 'var(--gradient-primary)',
               color: '#fff',
               fontWeight: 800,
               fontSize: '0.85rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)'
+              boxShadow: 'var(--shadow-sm)'
             }}
           >
             {saving ? 'Guardando...' : initialData?.id ? 'Actualizar Oportunidad' : 'Crear Oportunidad'}

@@ -95,11 +95,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       {/* Header & Title */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 className="card-title" style={{ margin: 0, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.5rem', color: '#2563eb' }}>analytics</span>
+          <h2 className="card-title" style={{ margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.5rem', color: 'var(--color-primary)' }}>analytics</span>
             Centro de Reportes, Informes Ejecutivos & BI ({tenantId.toUpperCase()})
           </h2>
-          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0 0 0' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>
             Informes de métricas omnicanal, rendimiento de la IA, auditoría de vendedores y exportación de datos.
           </p>
         </div>
@@ -112,7 +112,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
               padding: '0.5rem 1rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: '#10b981',
+              backgroundColor: 'var(--status-success-solid)',
               color: '#ffffff',
               fontSize: '0.82rem',
               fontWeight: 'bold',
@@ -120,7 +120,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
               display: 'flex',
               alignItems: 'center',
               gap: '0.4rem',
-              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)'
+              boxShadow: 'var(--shadow-sm)'
             }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>download</span>
@@ -128,15 +128,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
           </button>
 
           {/* Date Filter */}
-          <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#f8fafc', padding: '0.25rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'var(--surface-subtle)', padding: '0.25rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
             <button
               onClick={() => setDateRange('7d')}
               style={{
                 padding: '0.35rem 0.75rem',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: dateRange === '7d' ? '#0b2b4c' : 'transparent',
-                color: dateRange === '7d' ? '#fff' : '#64748b',
+                backgroundColor: dateRange === '7d' ? 'var(--color-primary)' : 'transparent',
+                color: dateRange === '7d' ? '#fff' : 'var(--text-muted)',
                 cursor: 'pointer',
                 fontSize: '0.75rem',
                 fontWeight: 'bold'
@@ -150,8 +150,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
                 padding: '0.35rem 0.75rem',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: dateRange === '30d' ? '#0b2b4c' : 'transparent',
-                color: dateRange === '30d' ? '#fff' : '#64748b',
+                backgroundColor: dateRange === '30d' ? 'var(--color-primary)' : 'transparent',
+                color: dateRange === '30d' ? '#fff' : 'var(--text-muted)',
                 cursor: 'pointer',
                 fontSize: '0.75rem',
                 fontWeight: 'bold'
@@ -165,8 +165,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
                 padding: '0.35rem 0.75rem',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: dateRange === 'all' ? '#0b2b4c' : 'transparent',
-                color: dateRange === 'all' ? '#fff' : '#64748b',
+                backgroundColor: dateRange === 'all' ? 'var(--color-primary)' : 'transparent',
+                color: dateRange === 'all' ? '#fff' : 'var(--text-muted)',
                 cursor: 'pointer',
                 fontSize: '0.75rem',
                 fontWeight: 'bold'
@@ -182,7 +182,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       <div style={{
         display: 'flex',
         gap: '0.5rem',
-        borderBottom: '1px solid #e5e7eb',
+        borderBottom: '1px solid var(--border-subtle)',
         paddingBottom: '0.75rem',
         marginBottom: '1.5rem',
         overflowX: 'auto'
@@ -193,9 +193,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             padding: '0.55rem 1rem',
             borderRadius: '8px',
             border: '1px solid',
-            borderColor: subTab === 'executive' ? '#2563eb' : '#e5e7eb',
-            backgroundColor: subTab === 'executive' ? '#eff6ff' : '#ffffff',
-            color: subTab === 'executive' ? '#2563eb' : '#64748b',
+            borderColor: subTab === 'executive' ? 'var(--color-primary)' : 'var(--border-subtle)',
+            backgroundColor: subTab === 'executive' ? 'rgba(0, 206, 255, 0.12)' : 'var(--surface-subtle)',
+            color: subTab === 'executive' ? 'var(--color-accent)' : 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             fontWeight: 'bold',
@@ -214,9 +214,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             padding: '0.55rem 1rem',
             borderRadius: '8px',
             border: '1px solid',
-            borderColor: subTab === 'crm-pipeline' ? '#7c3aed' : '#e5e7eb',
-            backgroundColor: subTab === 'crm-pipeline' ? '#f5f3ff' : '#ffffff',
-            color: subTab === 'crm-pipeline' ? '#7c3aed' : '#64748b',
+            borderColor: subTab === 'crm-pipeline' ? 'var(--color-accent)' : 'var(--border-subtle)',
+            backgroundColor: subTab === 'crm-pipeline' ? 'rgba(142, 36, 208, 0.15)' : 'var(--surface-subtle)',
+            color: subTab === 'crm-pipeline' ? 'var(--color-accent)' : 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             fontWeight: 'bold',
@@ -235,9 +235,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             padding: '0.55rem 1rem',
             borderRadius: '8px',
             border: '1px solid',
-            borderColor: subTab === 'ai-insights' ? '#db2777' : '#e5e7eb',
-            backgroundColor: subTab === 'ai-insights' ? '#fdf2f8' : '#ffffff',
-            color: subTab === 'ai-insights' ? '#db2777' : '#64748b',
+            borderColor: subTab === 'ai-insights' ? 'var(--color-primary)' : 'var(--border-subtle)',
+            backgroundColor: subTab === 'ai-insights' ? 'rgba(0, 206, 255, 0.12)' : 'var(--surface-subtle)',
+            color: subTab === 'ai-insights' ? 'var(--color-accent)' : 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             fontWeight: 'bold',
@@ -256,9 +256,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             padding: '0.55rem 1rem',
             borderRadius: '8px',
             border: '1px solid',
-            borderColor: subTab === 'quotes-audit' ? '#2563eb' : '#e5e7eb',
-            backgroundColor: subTab === 'quotes-audit' ? '#eff6ff' : '#ffffff',
-            color: subTab === 'quotes-audit' ? '#2563eb' : '#64748b',
+            borderColor: subTab === 'quotes-audit' ? 'var(--color-primary)' : 'var(--border-subtle)',
+            backgroundColor: subTab === 'quotes-audit' ? 'rgba(0, 206, 255, 0.12)' : 'var(--surface-subtle)',
+            color: subTab === 'quotes-audit' ? 'var(--color-accent)' : 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             fontWeight: 'bold',
@@ -277,9 +277,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             padding: '0.55rem 1rem',
             borderRadius: '8px',
             border: '1px solid',
-            borderColor: subTab === 'human-effort' ? '#10b981' : '#e5e7eb',
-            backgroundColor: subTab === 'human-effort' ? '#ecfdf5' : '#ffffff',
-            color: subTab === 'human-effort' ? '#059669' : '#64748b',
+            borderColor: subTab === 'human-effort' ? 'var(--status-success-border)' : 'var(--border-subtle)',
+            backgroundColor: subTab === 'human-effort' ? 'var(--status-success-bg)' : 'var(--surface-subtle)',
+            color: subTab === 'human-effort' ? 'var(--status-success-solid)' : 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             fontWeight: 'bold',
@@ -298,9 +298,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             padding: '0.55rem 1rem',
             borderRadius: '8px',
             border: '1px solid',
-            borderColor: subTab === 'channels' ? '#d97706' : '#e5e7eb',
-            backgroundColor: subTab === 'channels' ? '#fffbeb' : '#ffffff',
-            color: subTab === 'channels' ? '#d97706' : '#64748b',
+            borderColor: subTab === 'channels' ? 'var(--status-warning-border)' : 'var(--border-subtle)',
+            backgroundColor: subTab === 'channels' ? 'var(--status-warning-bg)' : 'var(--surface-subtle)',
+            color: subTab === 'channels' ? 'var(--status-warning-solid)' : 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             fontWeight: 'bold',
@@ -313,27 +313,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
           <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>smartphone</span>
           Rendimiento por Canal
         </button>
-        <button
-          onClick={() => setSubTab('ai-insights')}
-          style={{
-            padding: '0.55rem 1rem',
-            borderRadius: '8px',
-            border: '1px solid',
-            borderColor: subTab === 'ai-insights' ? '#db2777' : '#e5e7eb',
-            backgroundColor: subTab === 'ai-insights' ? '#fdf2f8' : '#ffffff',
-            color: subTab === 'ai-insights' ? '#db2777' : '#64748b',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-            fontWeight: 'bold',
-            whiteSpace: 'nowrap',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem'
-          }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>lightbulb</span>
-          Oportunidades & Inventario
-        </button>
       </div>
 
       {/* TAB 1: EXECUTIVE DASHBOARD */}
@@ -341,56 +320,56 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
           {/* KPI Cards Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div style={{ padding: '1.25rem', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Conversaciones Totales</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#2563eb', margin: '0.25rem 0' }}>{metrics.totalConversations.toLocaleString()}</div>
-              <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            <div style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>Conversaciones Totales</span>
+              <div className="tabular-nums" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-primary)', margin: '0.25rem 0' }}>{metrics.totalConversations.toLocaleString()}</div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--status-success-solid)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>bolt</span>
                 {metrics.activeConversations} activas en este momento
               </span>
             </div>
 
-            <div style={{ padding: '1.25rem', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Autonomía de IA</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#059669', margin: '0.25rem 0' }}>{metrics.aiAutonomyRate}%</div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{metrics.aiHandledCount} chats resueltos 100% por IA</span>
+            <div style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>Autonomía de IA</span>
+              <div className="tabular-nums" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--status-success-solid)', margin: '0.25rem 0' }}>{metrics.aiAutonomyRate}%</div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{metrics.aiHandledCount} chats resueltos 100% por IA</span>
             </div>
 
-            <div style={{ padding: '1.25rem', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Horas/Hombre Ahorradas</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#7c3aed', margin: '0.25rem 0' }}>{metrics.hoursSaved} hrs</div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Equivalente a ~{Math.round(metrics.hoursSaved / 8)} días laborales</span>
+            <div style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>Horas/Hombre Ahorradas</span>
+              <div className="tabular-nums" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-accent)', margin: '0.25rem 0' }}>{metrics.hoursSaved} hrs</div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Equivalente a ~{Math.round(metrics.hoursSaved / 8)} días laborales</span>
             </div>
 
-            <div style={{ padding: '1.25rem', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Satisfacción CSAT</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#d97706', margin: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: '#f59e0b' }}>star</span>
+            <div style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>Satisfacción CSAT</span>
+              <div className="tabular-nums" style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--status-warning-solid)', margin: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: 'var(--status-warning-solid)' }}>star</span>
                 {metrics.csatScore} / 5.0
               </div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{metrics.csatResponseRate}% de respuesta de clientes</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{metrics.csatResponseRate}% de respuesta de clientes</span>
             </div>
           </div>
 
           {/* Visual AI vs Human Split Progress Bar */}
-          <div style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span className="material-symbols-outlined" style={{ color: '#2563eb' }}>smart_toy</span>
+          <div style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', borderRadius: '12px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)' }}>smart_toy</span>
               Distribución de Atención: IA vs. Agentes Humanos
             </h4>
 
-            <div style={{ height: '24px', backgroundColor: '#e2e8f0', borderRadius: '12px', overflow: 'hidden', display: 'flex', marginBottom: '0.75rem' }}>
-              <div style={{ width: `${metrics.aiAutonomyRate}%`, backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
+            <div style={{ height: '24px', backgroundColor: 'var(--surface-subtle)', borderRadius: '12px', overflow: 'hidden', display: 'flex', marginBottom: '0.75rem', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ width: `${metrics.aiAutonomyRate}%`, background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
                 IA ({metrics.aiAutonomyRate}%)
               </div>
-              <div style={{ width: `${100 - metrics.aiAutonomyRate}%`, backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
+              <div style={{ width: `${100 - metrics.aiAutonomyRate}%`, backgroundColor: 'rgba(142, 36, 208, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
                 Humanos ({(100 - metrics.aiAutonomyRate).toFixed(1)}%)
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b' }}>
-              <span>🤖 Resueltos por IA: <strong>{metrics.aiHandledCount}</strong></span>
-              <span>👤 Transferidos a Agentes: <strong>{metrics.humanHandledCount}</strong></span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              <span>🤖 Resueltos por IA: <strong style={{ color: 'var(--text-primary)' }}>{metrics.aiHandledCount}</strong></span>
+              <span>👤 Transferidos a Agentes: <strong style={{ color: 'var(--text-primary)' }}>{metrics.humanHandledCount}</strong></span>
             </div>
           </div>
         </div>
@@ -399,24 +378,24 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       {/* TAB 2: CRM PIPELINE */}
       {subTab === 'crm-pipeline' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c' }}>Pipeline de Conversión CRM (Valor Monetario por Etapa)</h4>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Pipeline de Conversión CRM (Valor Monetario por Etapa)</h4>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {metrics.pipeline.map(stage => (
-              <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.85rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-                <div style={{ width: '220px', fontSize: '0.85rem', fontWeight: 'bold', color: stage.color }}>
+              <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.85rem', backgroundColor: 'var(--surface-card)', borderRadius: '10px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ width: '220px', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
                   {stage.label}
                 </div>
 
-                <div style={{ flex: 1, backgroundColor: '#e5e7eb', height: '18px', borderRadius: '9px', overflow: 'hidden' }}>
+                <div style={{ flex: 1, backgroundColor: 'var(--surface-subtle)', height: '18px', borderRadius: '9px', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ width: `${(stage.count / 320) * 100}%`, backgroundColor: stage.color, height: '100%', borderRadius: '9px', transition: 'width 0.5s' }}></div>
                 </div>
 
-                <div style={{ width: '100px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 'bold', color: '#0b2b4c' }}>
+                <div className="tabular-nums" style={{ width: '100px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
                   {stage.count} leads
                 </div>
 
-                <div style={{ width: '130px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 'bold', color: '#059669' }}>
+                <div className="tabular-nums" style={{ width: '130px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--status-success-solid)' }}>
                   ${stage.value.toLocaleString()} USD
                 </div>
               </div>
@@ -428,33 +407,33 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       {/* TAB 3: HUMAN EFFORT */}
       {subTab === 'human-effort' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c' }}>Auditoría de Desempeño y Esfuerzo de Vendedores</h4>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Auditoría de Desempeño y Esfuerzo de Vendedores</h4>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>T. Promedio de Atención</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#059669', margin: '0.2rem 0' }}>{metrics.humanEffort.avgHandleTimeMinutes} min</div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Por conversación tras escalamiento</span>
+            <div style={{ padding: '1rem', backgroundColor: 'var(--surface-card)', borderRadius: '10px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>T. Promedio de Atención</span>
+              <div className="tabular-nums" style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--status-success-solid)', margin: '0.2rem 0' }}>{metrics.humanEffort.avgHandleTimeMinutes} min</div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Por conversación tras escalamiento</span>
             </div>
 
-            <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Respuesta Post-Escalamiento</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#2563eb', margin: '0.2rem 0' }}>{metrics.humanEffort.avgPostEscalationResponseSeconds} seg</div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Rapidez del vendedor al tomar la llamada</span>
+            <div style={{ padding: '1rem', backgroundColor: 'var(--surface-card)', borderRadius: '10px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Respuesta Post-Escalamiento</span>
+              <div className="tabular-nums" style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--color-primary)', margin: '0.2rem 0' }}>{metrics.humanEffort.avgPostEscalationResponseSeconds} seg</div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Rapidez del vendedor al tomar la llamada</span>
             </div>
 
-            <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Precualificación por IA</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#7c3aed', margin: '0.2rem 0' }}>{metrics.humanEffort.preQualifiedPercentage}%</div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Chats entregados con datos listos</span>
+            <div style={{ padding: '1rem', backgroundColor: 'var(--surface-card)', borderRadius: '10px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Precualificación por IA</span>
+              <div className="tabular-nums" style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--color-accent)', margin: '0.2rem 0' }}>{metrics.humanEffort.preQualifiedPercentage}%</div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Chats entregados con datos listos</span>
             </div>
           </div>
 
           {/* Agent Table */}
-          <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff' }}>
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '10px', backgroundColor: 'var(--surface-card)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
               <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e5e7eb', color: '#0b2b4c' }}>
+                <tr style={{ backgroundColor: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                   <th style={{ padding: '0.85rem' }}>Vendedor / Agente</th>
                   <th style={{ padding: '0.85rem', textAlign: 'center' }}>Chats Atendidos</th>
                   <th style={{ padding: '0.85rem', textAlign: 'center' }}>Tiempo Atención Humana</th>
@@ -465,14 +444,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
               </thead>
               <tbody>
                 {metrics.humanEffort.agentStats.map((agent, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '0.85rem', fontWeight: 'bold', color: '#2563eb' }}>{agent.name}</td>
-                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 600, color: '#0b2b4c' }}>{agent.handled} ({agent.closed} resueltos)</td>
-                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: '#059669' }}>{agent.handleTimeMin} min</td>
-                    <td style={{ padding: '0.85rem', textAlign: 'center', fontFamily: 'monospace', color: '#0b2b4c' }}>{agent.typedMsgs} msgs</td>
-                    <td style={{ padding: '0.85rem', textAlign: 'center', color: '#64748b' }}>{agent.pausesMin} min</td>
-                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: '#d97706' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: '0.9rem', verticalAlign: 'middle', marginRight: '2px', color: '#f59e0b' }}>star</span>
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '0.85rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>{agent.name}</td>
+                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}>{agent.handled} ({agent.closed} resueltos)</td>
+                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--status-success-solid)' }}>{agent.handleTimeMin} min</td>
+                    <td style={{ padding: '0.85rem', textAlign: 'center', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{agent.typedMsgs} msgs</td>
+                    <td style={{ padding: '0.85rem', textAlign: 'center', color: 'var(--text-muted)' }}>{agent.pausesMin} min</td>
+                    <td style={{ padding: '0.85rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--status-warning-solid)' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '0.9rem', verticalAlign: 'middle', marginRight: '2px', color: 'var(--status-warning-solid)' }}>star</span>
                       {agent.csat}
                     </td>
                   </tr>
@@ -486,19 +465,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       {/* TAB 4: CHANNELS */}
       {subTab === 'channels' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span className="material-symbols-outlined" style={{ color: '#2563eb' }}>smartphone</span>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)' }}>smartphone</span>
             Volumen y Proporción por Canal de Atención
           </h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
             {metrics.channels.map((channel, idx) => (
-              <div key={idx} style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#0b2b4c' }}>{channel.name}</span>
-                <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#2563eb', margin: '0.5rem 0' }}>{channel.count} chats</div>
-                <div style={{ height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ width: `${channel.percentage}%`, height: '100%', backgroundColor: '#2563eb' }}></div>
+              <div key={idx} style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', borderRadius: '12px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{channel.name}</span>
+                <div className="tabular-nums" style={{ fontSize: '1.6rem', fontWeight: 'bold', color: 'var(--color-accent)', margin: '0.5rem 0' }}>{channel.count} chats</div>
+                <div style={{ height: '6px', backgroundColor: 'var(--surface-subtle)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: `${channel.percentage}%`, height: '100%', background: 'var(--gradient-primary)' }}></div>
                 </div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.4rem', display: 'block' }}>{channel.percentage}% del volumen total</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'block' }}>{channel.percentage}% del volumen total</span>
               </div>
             ))}
           </div>
@@ -509,15 +488,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       {subTab === 'ai-insights' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
           {/* Top Products Requested */}
-          <div style={{ padding: '1.25rem', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span className="material-symbols-outlined" style={{ color: '#ea580c' }}>trending_up</span>
+          <div style={{ padding: '1.25rem', backgroundColor: 'var(--surface-card)', borderRadius: '12px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)' }}>trending_up</span>
               Laptops y Productos Más Consultados
             </h4>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#64748b' }}>
+                  <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '0.6rem' }}>SKU</th>
                     <th style={{ padding: '0.6rem' }}>Producto</th>
                     <th style={{ padding: '0.6rem', textAlign: 'center' }}>Consultas</th>
@@ -526,11 +505,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
                 </thead>
                 <tbody>
                   {metrics.aiInsights.topProducts.map((p, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.6rem', fontFamily: 'monospace', color: '#2563eb', fontWeight: 700 }}>{p.id}</td>
-                      <td style={{ padding: '0.6rem', fontWeight: 600, color: '#0b2b4c' }}>{p.name}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: '#059669' }}>{p.count}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: '#0b2b4c' }}>{p.stock} un.</td>
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '0.6rem', fontFamily: 'monospace', color: 'var(--color-accent)', fontWeight: 700 }}>{p.id}</td>
+                      <td style={{ padding: '0.6rem', fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--status-success-solid)' }}>{p.count}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)' }}>{p.stock} un.</td>
                     </tr>
                   ))}
                 </tbody>
@@ -539,18 +518,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
           </div>
 
           {/* Lost Sales because of Stock = 0 */}
-          <div style={{ padding: '1.25rem', backgroundColor: '#fef2f2', borderRadius: '12px', border: '1px solid #fecaca' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span className="material-symbols-outlined" style={{ color: '#dc2626' }}>warning</span>
+          <div style={{ padding: '1.25rem', backgroundColor: 'var(--status-danger-bg)', borderRadius: '12px', border: '1px solid var(--status-danger-border)' }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: 'var(--status-danger-solid)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ color: 'var(--status-danger-solid)' }}>warning</span>
               Ventas Perdidas por Falta de Stock (`stock = 0`)
             </h4>
-            <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
               Productos buscados por los clientes en WhatsApp que no tenían unidades disponibles en inventario.
             </p>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #fecaca', color: '#64748b' }}>
+                  <tr style={{ borderBottom: '1px solid var(--status-danger-border)', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '0.6rem' }}>Producto Buscado</th>
                     <th style={{ padding: '0.6rem', textAlign: 'center' }}>Clientes Interesados</th>
                     <th style={{ padding: '0.6rem' }}>Última Consulta</th>
@@ -558,10 +537,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
                 </thead>
                 <tbody>
                   {metrics.aiInsights.lostSalesStock.map((ls, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #fee2e2' }}>
-                      <td style={{ padding: '0.6rem', fontWeight: 'bold', color: '#0b2b4c' }}>{ls.product}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: '#dc2626' }}>{ls.count} personas</td>
-                      <td style={{ padding: '0.6rem', color: '#64748b' }}>{ls.lastRequested}</td>
+                    <tr key={i} style={{ borderBottom: '1px solid var(--status-danger-border)' }}>
+                      <td style={{ padding: '0.6rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{ls.product}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--status-danger-solid)' }}>{ls.count} personas</td>
+                      <td style={{ padding: '0.6rem', color: 'var(--text-muted)' }}>{ls.lastRequested}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -574,17 +553,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
       {/* TAB 6: QUOTES AUDIT & EXPORT */}
       {subTab === 'quotes-audit' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeIn 0.2s ease-out' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--surface-card)', padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0b2b4c' }}>📊 Auditoría Gerencial de Cotizaciones y Asignaciones</h3>
-              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>Trazabilidad inmutable de todas las cotizaciones creadas por asesor con exportación a Excel.</p>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>📊 Auditoría Gerencial de Cotizaciones y Asignaciones</h3>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Trazabilidad inmutable de todas las cotizaciones creadas por asesor con exportación a Excel.</p>
             </div>
             <button
               onClick={() => {
                 window.open(`/api/control/${tenantId}/reports/quotes-audit?format=csv`, '_blank');
               }}
               style={{
-                backgroundColor: '#059669',
+                backgroundColor: 'var(--status-success-solid)',
                 color: '#ffffff',
                 border: 'none',
                 padding: '0.6rem 1.1rem',
@@ -595,7 +574,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.4rem',
-                boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
+                boxShadow: 'var(--shadow-sm)'
               }}
             >
               <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>download</span>
@@ -603,10 +582,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
             </button>
           </div>
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'var(--surface-card)', borderRadius: '12px', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
               <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                <tr style={{ backgroundColor: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 700 }}>
                   <th style={{ padding: '0.75rem 1rem' }}>ID</th>
                   <th style={{ padding: '0.75rem 1rem' }}>Cliente</th>
                   <th style={{ padding: '0.75rem 1rem' }}>Teléfono</th>
@@ -618,19 +597,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tenantId, token }) =
               </thead>
               <tbody>
                 {loadingQuotesAudit ? (
-                  <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8' }}>Cargando auditoría...</td></tr>
+                  <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando auditoría...</td></tr>
                 ) : quotesAuditData.length === 0 ? (
-                  <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8' }}>Sin cotizaciones registradas.</td></tr>
+                  <tr><td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>Sin cotizaciones registradas.</td></tr>
                 ) : (
                   quotesAuditData.map((row: any) => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#2563eb' }}>#{row.id}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#1e293b' }}>{row.contact_name || 'Cliente'}</td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#64748b' }}>{row.contact_phone || '-'}</td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#1e293b' }}>{row.title || 'Cotización'}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: '#059669' }}>${row.value || 0} {row.currency || 'USD'}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#7c3aed' }}>{row.assigned_agent_name || 'Sin Asignar'}</td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#64748b' }}>{new Date(row.created_at).toLocaleDateString()}</td>
+                    <tr key={row.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--color-accent)' }}>#{row.id}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{row.contact_name || 'Cliente'}</td>
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)' }}>{row.contact_phone || '-'}</td>
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-primary)' }}>{row.title || 'Cotización'}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: 'var(--status-success-solid)' }}>${row.value || 0} {row.currency || 'USD'}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--color-accent)' }}>{row.assigned_agent_name || 'Sin Asignar'}</td>
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)' }}>{new Date(row.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))
                 )}
