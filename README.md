@@ -1,6 +1,10 @@
 # AI Platform - Administrador Inteligente de Agentes Multitenant
+> **URL Producción:** `https://salesengine.eitserv.tech/`  
+> **Host:** VPS `31.220.107.80` (Puerto `4000` / Traefik / Docker `chatwoot-ai-platform`)  
+> **Estado Operativo:** Restaurado a su panel original (`chatwoot-ai-platform` en puerto `4000`). Sin modificaciones en su flujo de trabajo interno.  
+> **Alcance de UX Impeccable:** Aplicado exclusivamente a la pantalla de **Login / Landing Page de Acceso**.
 
-Una plataforma SaaS multitenant premium diseñada para conectar bandejas de entrada de **Chatwoot** con potentes agentes de Inteligencia Artificial (**Google Gemini** y **DeepSeek**) optimizados mediante **Llamadas a Funciones (Tool Calling)**. 
+--- 
 
 El sistema permite a empresas (inquilinos) automatizar la atención a clientes, buscar en su catálogo de productos local en PostgreSQL, responder consultas de su base de conocimiento y **agendar/gestionar citas en tiempo real** directamente desde WhatsApp sin salir del chat.
 

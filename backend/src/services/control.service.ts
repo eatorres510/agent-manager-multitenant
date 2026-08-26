@@ -585,6 +585,8 @@ export class ControlService {
       beforeFilter = `AND m.id < $${queryParams.length}`;
     }
 
+    const baseUrl = config.chatwoot_url ? config.chatwoot_url.replace(/\/$/, '') : 'https://n8n-chatwoot.kwu5pq.easypanel.host';
+
     const sql = `
       SELECT sub.* FROM (
         SELECT 
@@ -599,16 +601,24 @@ export class ControlService {
             json_agg(
               json_build_object(
                 'id', att.id,
-                'file_type', CASE WHEN att.file_type = 1 THEN 'audio' WHEN att.file_type = 0 THEN 'image' ELSE 'file' END,
-                'data_url', att.data_url,
-                'thumb_url', att.data_url,
+                'file_type', CASE WHEN att.file_type = 1 THEN 'audio' WHEN att.file_type = 0 THEN 'image' WHEN att.file_type = 2 THEN 'video' ELSE 'file' END,
+                'data_url', CASE 
+                  WHEN asb.key IS NOT NULL THEN CONCAT('${baseUrl}/rails/active_storage/blobs/redirect/', asb.key, '/', asb.filename)
+                  ELSE att.external_url 
+                END,
+                'thumb_url', CASE 
+                  WHEN asb.key IS NOT NULL THEN CONCAT('${baseUrl}/rails/active_storage/blobs/redirect/', asb.key, '/', asb.filename)
+                  ELSE att.external_url 
+                END,
                 'fallback_title', att.fallback_title
               )
             ) FILTER (WHERE att.id IS NOT NULL), '[]'
           ) AS attachments
         FROM messages m
         LEFT JOIN users u ON m.sender_id = u.id AND m.sender_type = 'User'
-        LEFT JOIN attachments att ON att.message_id = m.id
+        LEFT JOIN attachments att ON att.message_id = m.id AND att.created_at >= m.created_at - INTERVAL '1 hour' AND att.created_at <= m.created_at + INTERVAL '1 hour'
+        LEFT JOIN active_storage_attachments asa ON asa.record_id = att.id AND asa.record_type = 'Attachment'
+        LEFT JOIN active_storage_blobs asb ON asa.blob_id = asb.id
         WHERE m.account_id = $1 AND m.conversation_id = $2 ${beforeFilter}
         GROUP BY m.id, u.name, u.email
         ORDER BY m.created_at DESC
@@ -836,7 +846,7 @@ export class ControlService {
           if (fs.existsSync(outPath) && fs.statSync(outPath).size > 0) {
             bufferToSend = fs.readFileSync(outPath);
             filename = `${uniqueAudioName}.ogg`;
-            contentType = 'audio/ogg; codecs=opus';
+            contentType = 'audio/ogg';
             console.log(`[Audio Transcode Success] Convertido a OGG/Opus Nativo WhatsApp 48kHz (${bufferToSend.length} bytes)`);
           }
           try { fs.unlinkSync(inPath); } catch (e) {}
@@ -844,7 +854,7 @@ export class ControlService {
         } catch (err: any) {
           console.error('[Audio Transcode Fallback]', err.message);
           filename = `voice_note_conv${targetDisplayId}_${Date.now()}.ogg`;
-          contentType = 'audio/ogg; codecs=opus';
+          contentType = 'audio/ogg';
         }
       }
 
@@ -1221,25 +1231,315 @@ export class ControlService {
     return response.data;
   }
 
-  // --- CRM OPPORTUNITIES ---
-  async getOpportunities(tenantId: string, contactId?: string, conversationId?: string, stage?: string) {
-    let queryText = `SELECT * FROM crm_opportunities WHERE tenant_id = $1`;
+  // --- B2B COMPANIES / ACCOUNTS CRUD ---
+  async getCompanies(tenantId: string, search?: string) {
+    let queryText = `
+      SELECT 
+        c.*,
+        COUNT(DISTINCT cc.id) AS contacts_count,
+        COUNT(DISTINCT o.id) AS deals_count,
+        COALESCE(SUM(CASE WHEN o.stage != 'stage:perdido' AND o.stage != 'stage:b2b_perdido' THEN o.value ELSE 0 END), 0) AS total_pipeline_value
+      FROM crm_companies c
+      LEFT JOIN crm_company_contacts cc ON cc.company_id = c.id
+      LEFT JOIN crm_opportunities o ON o.company_id = c.id
+      WHERE c.tenant_id = $1
+    `;
     const params: any[] = [tenantId];
 
+    if (search && search.trim()) {
+      params.push(`%${search.trim().toLowerCase()}%`);
+      queryText += ` AND (LOWER(c.name) LIKE $${params.length} OR LOWER(COALESCE(c.ruc_tax_id, '')) LIKE $${params.length} OR LOWER(COALESCE(c.industry, '')) LIKE $${params.length} OR LOWER(COALESCE(c.assigned_agent_name, '')) LIKE $${params.length})`;
+    }
+
+    queryText += ` GROUP BY c.id ORDER BY c.updated_at DESC`;
+    const res = await configService.query(queryText, params);
+    return res.rows;
+  }
+
+  async getCompany(tenantId: string, id: number) {
+    const compRes = await configService.query(`SELECT * FROM crm_companies WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (compRes.rows.length === 0) return null;
+    const company = compRes.rows[0];
+
+    const contactsRes = await configService.query(`
+      SELECT * FROM crm_company_contacts 
+      WHERE company_id = $1 AND tenant_id = $2 
+      ORDER BY is_primary DESC, id ASC
+    `, [id, tenantId]);
+
+    const dealsRes = await configService.query(`
+      SELECT * FROM crm_opportunities 
+      WHERE company_id = $1 AND tenant_id = $2 
+      ORDER BY created_at DESC
+    `, [id, tenantId]);
+
+    return {
+      ...company,
+      contacts: contactsRes.rows,
+      deals: dealsRes.rows
+    };
+  }
+
+  async createCompany(tenantId: string, payload: any) {
+    const {
+      name,
+      ruc_tax_id,
+      industry,
+      phone,
+      email,
+      website,
+      address,
+      credit_terms = 'Contado',
+      assigned_agent_name = 'Sin Asignar',
+      status = 'active',
+      notes = ''
+    } = payload;
+
+    const res = await configService.query(`
+      INSERT INTO crm_companies (
+        tenant_id, name, ruc_tax_id, industry, phone, email,
+        website, address, credit_terms, assigned_agent_name, status, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `, [
+      tenantId, name, ruc_tax_id || null, industry || null, phone || null, email || null,
+      website || null, address || null, credit_terms || 'Contado', assigned_agent_name || 'Sin Asignar', status || 'active', notes || ''
+    ]);
+
+    return res.rows[0];
+  }
+
+  async updateCompany(tenantId: string, id: number, payload: any) {
+    const fields: string[] = [];
+    const params: any[] = [id, tenantId];
+
+    const allowed = [
+      'name', 'ruc_tax_id', 'industry', 'phone', 'email',
+      'website', 'address', 'credit_terms', 'assigned_agent_name', 'status', 'notes'
+    ];
+
+    allowed.forEach(key => {
+      if (payload[key] !== undefined) {
+        params.push(payload[key]);
+        fields.push(`${key} = $${params.length}`);
+      }
+    });
+
+    if (fields.length === 0) return null;
+
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    const queryText = `UPDATE crm_companies SET ${fields.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`;
+    const res = await configService.query(queryText, params);
+    return res.rows[0];
+  }
+
+  async deleteCompany(tenantId: string, id: number) {
+    const res = await configService.query(`DELETE FROM crm_companies WHERE id = $1 AND tenant_id = $2 RETURNING *`, [id, tenantId]);
+    return res.rows[0];
+  }
+
+  // --- B2B COMPANY CONTACTS (1 Company -> N Contacts) ---
+  async getCompanyContacts(tenantId: string, companyId: number) {
+    const res = await configService.query(`
+      SELECT * FROM crm_company_contacts
+      WHERE company_id = $1 AND tenant_id = $2
+      ORDER BY is_primary DESC, id ASC
+    `, [companyId, tenantId]);
+    return res.rows;
+  }
+
+  async createCompanyContact(tenantId: string, companyId: number, payload: any) {
+    const {
+      name,
+      role_title,
+      phone,
+      email,
+      decision_level = 'decisor',
+      is_primary = false,
+      notes = ''
+    } = payload;
+
+    // If marked as primary, unmark existing primary contacts for this company
+    if (is_primary) {
+      await configService.query(`
+        UPDATE crm_company_contacts SET is_primary = false WHERE company_id = $1 AND tenant_id = $2
+      `, [companyId, tenantId]);
+    }
+
+    const res = await configService.query(`
+      INSERT INTO crm_company_contacts (
+        tenant_id, company_id, name, role_title, phone, email, decision_level, is_primary, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      tenantId, companyId, name, role_title || null, phone || null, email || null,
+      decision_level || 'decisor', is_primary || false, notes || ''
+    ]);
+
+    return res.rows[0];
+  }
+
+  async updateCompanyContact(tenantId: string, companyId: number, contactId: number, payload: any) {
+    const fields: string[] = [];
+    const params: any[] = [contactId, companyId, tenantId];
+
+    if (payload.is_primary) {
+      await configService.query(`
+        UPDATE crm_company_contacts SET is_primary = false WHERE company_id = $1 AND tenant_id = $2 AND id != $3
+      `, [companyId, tenantId, contactId]);
+    }
+
+    const allowed = ['name', 'role_title', 'phone', 'email', 'decision_level', 'is_primary', 'notes'];
+    allowed.forEach(key => {
+      if (payload[key] !== undefined) {
+        params.push(payload[key]);
+        fields.push(`${key} = $${params.length}`);
+      }
+    });
+
+    if (fields.length === 0) return null;
+
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    const queryText = `UPDATE crm_company_contacts SET ${fields.join(', ')} WHERE id = $1 AND company_id = $2 AND tenant_id = $3 RETURNING *`;
+    const res = await configService.query(queryText, params);
+    return res.rows[0];
+  }
+
+  async deleteCompanyContact(tenantId: string, companyId: number, contactId: number) {
+    const res = await configService.query(`
+      DELETE FROM crm_company_contacts WHERE id = $1 AND company_id = $2 AND tenant_id = $3 RETURNING *
+    `, [contactId, companyId, tenantId]);
+    return res.rows[0];
+  }
+
+  // --- OUTBOUND WHATSAPP / CHATWOOT INITIATION ---
+  async initiateOutboundWhatsApp(tenantId: string, payload: { phone: string; name: string; message?: string; company_id?: number; contact_id?: number }) {
+    const config = await this.getTenantConfig(tenantId);
+    const { phone, name, message } = payload;
+
+    if (!phone) {
+      throw new Error('Número de teléfono requerido para iniciar conversación de WhatsApp.');
+    }
+
+    // Clean and normalize phone number
+    const cleanPhone = phone.replace(/[^0-9+]/g, '');
+    const inboxes = await this.getInboxes(tenantId);
+    if (!inboxes || inboxes.length === 0) {
+      throw new Error('No hay canales (inboxes) configurados en Chatwoot para este tenant.');
+    }
+
+    // Pick the WhatsApp inbox or the first available inbox
+    const waInbox = inboxes.find((i: any) => i.channel_type?.includes('whatsapp') || i.name?.toLowerCase().includes('whatsapp')) || inboxes[0];
+
+    // 1. Search existing contact by phone or create new contact
+    let chatwootContactId: number | null = null;
+    try {
+      const searchUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/contacts/search?q=${encodeURIComponent(cleanPhone.slice(-8))}`;
+      const searchRes = await axios.get(searchUrl, {
+        headers: { 'api_access_token': config.chatwoot_access_token }
+      });
+      const contacts = searchRes.data?.payload || [];
+      if (contacts.length > 0) {
+        chatwootContactId = contacts[0].id;
+      }
+    } catch (e: any) {
+      console.warn('[Outbound WhatsApp] Contact search error:', e.message);
+    }
+
+    if (!chatwootContactId) {
+      try {
+        const createContactUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/contacts`;
+        const createContactRes = await axios.post(createContactUrl, {
+          inbox_id: waInbox.id,
+          name: name || `Contacto ${cleanPhone}`,
+          phone_number: cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`
+        }, {
+          headers: {
+            'api_access_token': config.chatwoot_access_token,
+            'Content-Type': 'application/json'
+          }
+        });
+        chatwootContactId = createContactRes.data?.payload?.contact?.id || createContactRes.data?.id;
+      } catch (createErr: any) {
+        console.error('[Outbound WhatsApp] Error creating contact in Chatwoot:', createErr.response?.data || createErr.message);
+        throw new Error(createErr.response?.data?.message || 'Error registrando contacto en Chatwoot.');
+      }
+    }
+
+    if (!chatwootContactId) {
+      throw new Error('No se pudo resolver el ID del contacto en Chatwoot.');
+    }
+
+    // 2. Create conversation in Chatwoot
+    try {
+      const convUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations`;
+      const convRes = await axios.post(convUrl, {
+        source_id: String(chatwootContactId),
+        inbox_id: waInbox.id,
+        contact_id: chatwootContactId,
+        status: 'open',
+        message: message ? { content: message } : undefined
+      }, {
+        headers: {
+          'api_access_token': config.chatwoot_access_token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const conversationData = convRes.data;
+      const conversationId = conversationData?.id || conversationData?.conversation_id;
+      const displayId = conversationData?.display_id || conversationId;
+
+      return {
+        success: true,
+        conversation_id: conversationId,
+        display_id: displayId,
+        contact_id: chatwootContactId,
+        inbox_id: waInbox.id
+      };
+    } catch (convErr: any) {
+      console.error('[Outbound WhatsApp] Error creating conversation in Chatwoot:', convErr.response?.data || convErr.message);
+      throw new Error(convErr.response?.data?.message || 'Error creando la conversación en Chatwoot.');
+    }
+  }
+
+  // --- CRM OPPORTUNITIES (MULTI-PIPELINE: B2C & B2B) ---
+  async getOpportunities(tenantId: string, contactId?: string, conversationId?: string, stage?: string, pipelineType?: string) {
+    let queryText = `
+      SELECT 
+        o.*,
+        c.name AS company_display_name,
+        c.ruc_tax_id AS company_ruc,
+        c.industry AS company_industry,
+        cc.name AS company_contact_name,
+        cc.role_title AS company_contact_role,
+        cc.phone AS company_contact_phone,
+        cc.email AS company_contact_email
+      FROM crm_opportunities o
+      LEFT JOIN crm_companies c ON o.company_id = c.id
+      LEFT JOIN crm_company_contacts cc ON o.company_contact_id = cc.id
+      WHERE o.tenant_id = $1
+    `;
+    const params: any[] = [tenantId];
+
+    if (pipelineType) {
+      params.push(pipelineType);
+      queryText += ` AND o.pipeline_type = $${params.length}`;
+    }
     if (contactId) {
       params.push(contactId);
-      queryText += ` AND (contact_id = $${params.length} OR contact_phone LIKE '%' || $${params.length} || '%')`;
+      queryText += ` AND (o.contact_id = $${params.length} OR o.contact_phone LIKE '%' || $${params.length} || '%')`;
     }
     if (conversationId) {
       params.push(conversationId);
-      queryText += ` AND conversation_id = $${params.length}`;
+      queryText += ` AND o.conversation_id = $${params.length}`;
     }
     if (stage) {
       params.push(stage);
-      queryText += ` AND stage = $${params.length}`;
+      queryText += ` AND o.stage = $${params.length}`;
     }
 
-    queryText += ` ORDER BY updated_at DESC`;
+    queryText += ` ORDER BY o.updated_at DESC`;
     const res = await configService.query(queryText, params);
     return res.rows;
   }
@@ -1258,20 +1558,28 @@ export class ControlService {
       assigned_agent_name,
       next_action_type,
       next_action_date,
-      next_action_notes
+      next_action_notes,
+      pipeline_type = 'b2c',
+      company_id,
+      company_name,
+      company_contact_id,
+      credit_terms,
+      target_closing_date
     } = payload;
 
     const res = await configService.query(`
       INSERT INTO crm_opportunities (
         tenant_id, contact_id, contact_name, contact_phone, conversation_id,
         title, value, currency, stage, probability, assigned_agent_name,
-        next_action_type, next_action_date, next_action_notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        next_action_type, next_action_date, next_action_notes,
+        pipeline_type, company_id, company_name, company_contact_id, credit_terms, target_closing_date
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `, [
       tenantId, contact_id || 'general', contact_name || 'Cliente', contact_phone || '', conversation_id || null,
       title || 'Nueva Oportunidad Comercial', value || 0.00, currency, stage, probability, assigned_agent_name || 'Vendedor',
-      next_action_type || null, next_action_date || null, next_action_notes || null
+      next_action_type || null, next_action_date || null, next_action_notes || null,
+      pipeline_type || 'b2c', company_id || null, company_name || null, company_contact_id || null, credit_terms || null, target_closing_date || null
     ]);
 
     return res.rows[0];
@@ -1284,7 +1592,9 @@ export class ControlService {
     const allowed = [
       'title', 'value', 'currency', 'stage', 'probability',
       'assigned_agent_name', 'lost_reason', 'lost_notes',
-      'next_action_type', 'next_action_date', 'next_action_notes'
+      'next_action_type', 'next_action_date', 'next_action_notes',
+      'pipeline_type', 'company_id', 'company_name', 'company_contact_id',
+      'credit_terms', 'target_closing_date'
     ];
 
     allowed.forEach(key => {

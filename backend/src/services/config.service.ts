@@ -263,6 +263,55 @@ class ConfigService {
         )
       `);
 
+      // 11. B2B Companies & Accounts table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS crm_companies (
+          id SERIAL PRIMARY KEY,
+          tenant_id VARCHAR(50) NOT NULL,
+          name VARCHAR(200) NOT NULL,
+          ruc_tax_id VARCHAR(50),
+          industry VARCHAR(100),
+          phone VARCHAR(50),
+          email VARCHAR(255),
+          website VARCHAR(255),
+          address TEXT,
+          credit_terms VARCHAR(50) DEFAULT 'Contado',
+          assigned_agent_name VARCHAR(100),
+          status VARCHAR(50) DEFAULT 'active',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // 12. B2B Company Contacts table (1 Company -> N Contacts)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS crm_company_contacts (
+          id SERIAL PRIMARY KEY,
+          tenant_id VARCHAR(50) NOT NULL,
+          company_id INT NOT NULL REFERENCES crm_companies(id) ON DELETE CASCADE,
+          name VARCHAR(150) NOT NULL,
+          role_title VARCHAR(100),
+          phone VARCHAR(50),
+          email VARCHAR(255),
+          decision_level VARCHAR(50) DEFAULT 'decisor',
+          is_primary BOOLEAN DEFAULT false,
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // 13. Extend CRM Opportunities with B2B columns
+      await client.query(`
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS pipeline_type VARCHAR(20) DEFAULT 'b2c';
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS company_id INT REFERENCES crm_companies(id) ON DELETE SET NULL;
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS company_name VARCHAR(200);
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS company_contact_id INT REFERENCES crm_company_contacts(id) ON DELETE SET NULL;
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS credit_terms VARCHAR(50);
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS target_closing_date DATE;
+      `);
+
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');

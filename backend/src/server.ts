@@ -1704,14 +1704,143 @@ app.delete('/api/appointments/:id', authenticateToken, async (req: AuthRequest, 
 app.get('/api/control/:tenantId/opportunities', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { tenantId } = req.params;
-    const { contact_id, conversation_id, stage } = req.query;
+    const { contact_id, conversation_id, stage, pipeline_type } = req.query;
     const list = await controlService.getOpportunities(
       tenantId,
       contact_id ? String(contact_id) : undefined,
       conversation_id ? String(conversation_id) : undefined,
-      stage ? String(stage) : undefined
+      stage ? String(stage) : undefined,
+      pipeline_type ? String(pipeline_type) : undefined
     );
     res.json(list);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// -------------------------------------------------------------
+// B2B COMPANIES & CONTACTS APIS (Protected by JWT)
+// -------------------------------------------------------------
+app.get('/api/control/:tenantId/companies', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { search } = req.query;
+    const list = await controlService.getCompanies(tenantId, search ? String(search) : undefined);
+    res.json(list);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/control/:tenantId/companies/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, id } = req.params;
+    const company = await controlService.getCompany(tenantId, parseInt(id));
+    if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
+    res.json(company);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/companies', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId } = req.params;
+    const company = await controlService.createCompany(tenantId, req.body);
+    res.json(company);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/control/:tenantId/companies/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    const company = await controlService.updateCompany(tenantId, parseInt(id), req.body);
+    res.json(company);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/control/:tenantId/companies/:id', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    await controlService.deleteCompany(tenantId, parseInt(id));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Company Contacts CRUD (1 Company -> N Contacts)
+app.get('/api/control/:tenantId/companies/:companyId/contacts', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId, companyId } = req.params;
+    const contacts = await controlService.getCompanyContacts(tenantId, parseInt(companyId));
+    res.json(contacts);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/companies/:companyId/contacts', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, companyId } = req.params;
+    const contact = await controlService.createCompanyContact(tenantId, parseInt(companyId), req.body);
+    res.json(contact);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/control/:tenantId/companies/:companyId/contacts/:contactId', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, companyId, contactId } = req.params;
+    const contact = await controlService.updateCompanyContact(tenantId, parseInt(companyId), parseInt(contactId), req.body);
+    res.json(contact);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/control/:tenantId/companies/:companyId/contacts/:contactId', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, companyId, contactId } = req.params;
+    await controlService.deleteCompanyContact(tenantId, parseInt(companyId), parseInt(contactId));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Outbound WhatsApp Instant Chat Initiation
+app.post('/api/control/:tenantId/outbound-chat', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId } = req.params;
+    const result = await controlService.initiateOutboundWhatsApp(tenantId, req.body);
+    res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

@@ -463,23 +463,27 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
         </div>
       </div>
 
-      {/* SUB-NAV: Saved Lists Tabs (Reference UI Style) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '2px solid #e2e8f0', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
+      {/* SUB-NAV: Saved Lists Tabs */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid #E2E8F0', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.35rem' }}>
         <button
           onClick={() => setActiveListId('all')}
           style={{
-            padding: '0.55rem 1.1rem',
+            padding: '0.55rem 1rem',
             border: 'none',
-            borderBottom: activeListId === 'all' ? '3px solid #2563eb' : '3px solid transparent',
+            borderBottom: activeListId === 'all' ? '2px solid #2563EB' : '2px solid transparent',
             backgroundColor: 'transparent',
-            color: activeListId === 'all' ? '#2563eb' : '#64748b',
+            color: activeListId === 'all' ? '#2563EB' : '#475569',
             fontWeight: activeListId === 'all' ? 800 : 600,
             fontSize: '0.85rem',
             cursor: 'pointer',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem'
           }}
         >
-          👥 Todos los Contactos ({totalCount})
+          <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>group</span>
+          Todos los Contactos ({totalCount})
         </button>
 
         {savedLists.map(sl => (
@@ -489,22 +493,26 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
               style={{
                 padding: '0.55rem 0.85rem',
                 border: 'none',
-                borderBottom: activeListId === sl.id ? '3px solid #10b981' : '3px solid transparent',
+                borderBottom: activeListId === sl.id ? '2px solid #059669' : '2px solid transparent',
                 backgroundColor: 'transparent',
-                color: activeListId === sl.id ? '#059669' : '#64748b',
+                color: activeListId === sl.id ? '#065F46' : '#475569',
                 fontWeight: activeListId === sl.id ? 800 : 600,
                 fontSize: '0.85rem',
                 cursor: 'pointer',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
               }}
             >
-              📌 {sl.name}
+              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#059669' }}>bookmark</span>
+              {sl.name}
             </button>
             {role !== 'readonly' && (
               <button
                 onClick={() => handleDeleteList(sl.id)}
                 title="Eliminar Lista"
-                style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.75rem' }}
+                style={{ border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem 0.3rem' }}
               >
                 ✕
               </button>
@@ -516,19 +524,23 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
           <button
             onClick={() => setShowSaveListModal(true)}
             style={{
-              padding: '0.45rem 0.85rem',
+              padding: '0.4rem 0.85rem',
               borderRadius: '6px',
-              border: '1px dashed #2563eb',
-              backgroundColor: '#eff6ff',
-              color: '#2563eb',
-              fontWeight: 800,
+              border: '1px dashed #BFDBFE',
+              backgroundColor: '#EFF6FF',
+              color: '#1E40AF',
+              fontWeight: 700,
               fontSize: '0.78rem',
               cursor: 'pointer',
               marginLeft: '0.5rem',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem'
             }}
           >
-            💾 + Guardar Vista como Lista de Seguimiento
+            <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>bookmark_add</span>
+            Guardar Vista como Lista
           </button>
         )}
       </div>
@@ -536,8 +548,8 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
       {/* Floating Action Bar when bulk items selected */}
       {selectedIds.length > 0 && (
         <div style={{
-          backgroundColor: '#0b2b4c',
-          color: '#ffffff',
+          backgroundColor: '#0F172A',
+          color: '#FFFFFF',
           padding: '0.75rem 1.25rem',
           borderRadius: '10px',
           marginBottom: '1.25rem',
@@ -546,11 +558,11 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '0.75rem',
-          boxShadow: '0 4px 15px rgba(11, 43, 76, 0.25)',
+          boxShadow: '0 4px 15px rgba(15, 23, 42, 0.25)',
           animation: 'fadeIn 0.2s ease-out'
         }}>
           <div style={{ fontWeight: 800, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="material-symbols-outlined" style={{ color: '#38bdf8' }}>check_box</span>
+            <span className="material-symbols-outlined" style={{ color: '#38BDF8' }}>check_box</span>
             {selectedIds.length} contacto(s) seleccionado(s)
           </div>
 
@@ -561,14 +573,18 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
                 padding: '0.4rem 0.85rem',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: '#10b981',
-                color: '#ffffff',
-                fontWeight: 800,
+                backgroundColor: '#059669',
+                color: '#FFFFFF',
+                fontWeight: 700,
                 fontSize: '0.78rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem'
               }}
             >
-              💾 Crear Lista de Seguimiento
+              <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>bookmark</span>
+              Crear Lista de Seguimiento
             </button>
 
             <button
@@ -576,20 +592,24 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
               style={{
                 padding: '0.4rem 0.85rem',
                 borderRadius: '6px',
-                border: '1px solid rgba(255,255,255,0.3)',
+                border: '1px solid rgba(255,255,255,0.25)',
                 backgroundColor: 'transparent',
-                color: '#ffffff',
-                fontWeight: 800,
+                color: '#FFFFFF',
+                fontWeight: 700,
                 fontSize: '0.78rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem'
               }}
             >
-              📥 Exportar Seleccionados
+              <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>download</span>
+              Exportar Seleccionados
             </button>
 
             <button
               onClick={() => setSelectedIds([])}
-              style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.78rem' }}
+              style={{ border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
             >
               Cancelar Selección
             </button>
@@ -601,14 +621,14 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
       <div style={{
         display: 'flex',
         gap: '0.75rem',
-        backgroundColor: '#f8fafc',
-        padding: '0.85rem',
+        backgroundColor: '#FFFFFF',
+        padding: '0.75rem 1rem',
         borderRadius: '10px',
-        border: '1px solid #e2e8f0',
+        border: '1px solid #E2E8F0',
         marginBottom: '1.25rem',
         alignItems: 'center'
       }}>
-        <span className="material-symbols-outlined" style={{ color: '#64748b', fontSize: '1.25rem' }}>search</span>
+        <span className="material-symbols-outlined" style={{ color: '#64748B', fontSize: '1.25rem' }}>search</span>
         <input
           type="text"
           value={searchQuery}
@@ -619,22 +639,22 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
             border: 'none',
             backgroundColor: 'transparent',
             fontSize: '0.88rem',
-            color: '#0b2b4c',
+            color: '#0F172A',
             outline: 'none'
           }}
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery('')}
-            style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', fontWeight: 'bold' }}
+            style={{ border: 'none', background: 'none', color: '#64748B', cursor: 'pointer', fontWeight: 'bold' }}
           >
             ✕ Limpiar Filtro
           </button>
         )}
       </div>
 
-      {/* Table (Matching Reference Image) */}
-      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#ffffff' }}>
+      {/* Table for Desktop View */}
+      <div className="hide-mobile" style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px', backgroundColor: '#ffffff' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', color: '#0b2b4c' }}>
           <thead>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>
@@ -850,6 +870,91 @@ export const ContactsDirectoryTab: React.FC<ContactsDirectoryTabProps> = ({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* MOBILE RESPONSIVE CONTACT CARDS */}
+      <div className="hide-desktop" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando contactos...</div>
+        ) : filteredContacts.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No hay contactos disponibles.</div>
+        ) : (
+          filteredContacts.map(c => {
+            const attrs = c.custom_attributes || {};
+            const score = attrs.lead_score || 'Sin Calificar';
+            const company = attrs.empresa || attrs.company || '';
+
+            return (
+              <div key={c.id} style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                boxShadow: '0 2px 6px rgba(11,43,76,0.04)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0b2b4c' }}>{c.name || 'Sin Nombre'}</div>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '0.2rem 0.55rem',
+                    borderRadius: '12px',
+                    backgroundColor: score === 'Caliente' ? '#fef2f2' : score === 'Tibio' ? '#fef3c7' : '#f1f5f9',
+                    color: score === 'Caliente' ? '#dc2626' : score === 'Tibio' ? '#d97706' : '#64748b'
+                  }}>
+                    {score}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 700 }}>
+                  📞 {c.phone_number || 'Sin Teléfono'}
+                </div>
+
+                {c.email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>✉️ {c.email}</div>}
+                {company && <div style={{ fontSize: '0.78rem', color: '#0b2b4c', fontWeight: 600 }}>🏢 {company}</div>}
+
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem' }}>
+                  <button
+                    onClick={() => handleOpenEditModal(c)}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#f8fafc',
+                      color: '#0b2b4c',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✏️ Editar Ficha
+                  </button>
+                  {onOpenOpportunityModal && (
+                    <button
+                      onClick={() => onOpenOpportunityModal({ id: c.id, name: c.name, phone: c.phone_number, email: c.email })}
+                      style={{
+                        padding: '0.5rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px solid #a7f3d0',
+                        backgroundColor: '#ecfdf5',
+                        color: '#059669',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ➕ CRM
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Pagination Footer */}

@@ -242,13 +242,14 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
 
   const getStageLabel = (stageId: string) => {
     switch (stageId) {
-      case 'stage:prospecto': return '1. Prospecto / Lead';
-      case 'stage:interesado': return '2. Interesado';
-      case 'stage:cotizado': return '3. Cotización Enviada';
-      case 'stage:cita': return '4. Cita / Demo';
-      case 'stage:negociacion': return '5. En Negociación';
-      case 'stage:ganado': return '6. Venta Ganada';
-      case 'stage:perdido': return '7. Venta Perdida';
+      case 'stage:prospecto': return 'Prospección';
+      case 'stage:interesado': return 'Calificación';
+      case 'stage:cotizado': return 'Propuesta / Cotizado';
+      case 'stage:cita':
+      case 'stage:cita_agendada': return 'Demostración Agendada';
+      case 'stage:negociacion': return 'Negociación';
+      case 'stage:ganado': return 'Cierre Ganado';
+      case 'stage:perdido': return 'Venta Perdida';
       default: return stageId;
     }
   };
@@ -274,73 +275,102 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
         </div>
       )}
 
-      {/* Header Banner */}
+      {/* Modern Page Header (UP Digital Solution Breadcrumb & Actions) */}
       <div style={{
-        backgroundColor: '#0b2b4c',
-        color: '#ffffff',
-        padding: '1.5rem',
-        borderRadius: '16px',
-        boxShadow: '0 10px 25px rgba(11, 43, 76, 0.2)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '1rem'
+        gap: '1rem',
+        paddingBottom: '0.25rem'
       }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.5rem', color: '#60a5fa' }}>home</span>
-            Inicio & Panel de Seguimiento Diario del Asesor ({tenantId.toUpperCase()})
-          </h2>
-          <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.88rem', color: '#93c5fd', lineHeight: 1.4 }}>
-            Control de actividades diarias: gestiona seguimientos pendientes, edita cotizaciones o cierra ventas de tu equipo.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {tenantId.toUpperCase()}
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>/</span>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Panel Diario del Asesor
+            </h1>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            Control de actividades diarias: gestiona seguimientos pendientes, edita cotizaciones y cierra ventas de tu equipo.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', gap: '0.65rem' }}>
           <button
             onClick={() => onOpenChat()}
-            className="btn-primary"
-            style={{ backgroundColor: '#2563eb', padding: '0.6rem 1.1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.55rem 1.1rem',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'var(--gradient-primary)',
+              color: '#FFFFFF',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(142, 36, 208, 0.28)',
+              transition: 'all 0.15s ease'
+            }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>forum</span>
             Ir a Bandeja En Vivo
           </button>
           <button
             onClick={() => onOpenKanban()}
-            className="btn-primary"
-            style={{ backgroundColor: '#10b981', padding: '0.6rem 1.1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.55rem 1.1rem',
+              borderRadius: '8px',
+              border: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--surface-card)',
+              color: 'var(--text-primary)',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-xs)',
+              transition: 'all 0.15s ease'
+            }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>view_kanban</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: 'var(--status-success-solid)' }}>view_kanban</span>
             Ver Pipeline CRM (Kanban)
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards Grid with Theme Variables & Tabular Numerals */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
         {/* KPI 1: Overdue */}
         <div
           onClick={() => setActiveSubTab('overdue')}
           style={{
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--surface-card)',
             padding: '1.25rem',
-            borderRadius: '12px',
-            border: '2px solid',
-            borderColor: activeSubTab === 'overdue' ? '#ef4444' : '#fecaca',
-            boxShadow: activeSubTab === 'overdue' ? '0 4px 15px rgba(239, 68, 68, 0.2)' : 'none',
+            borderRadius: '16px',
+            border: activeSubTab === 'overdue' ? '2px solid var(--status-danger-solid)' : '1px solid var(--border-subtle)',
+            borderLeft: '4px solid var(--status-danger-solid)',
+            boxShadow: activeSubTab === 'overdue' ? '0 8px 20px rgba(220, 38, 38, 0.15)' : 'var(--shadow-card)',
             cursor: 'pointer',
-            transition: 'all 0.2s'
+            transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>warning</span>
-            Seguimientos Vencidos
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--status-danger-solid)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Seguimientos Vencidos
+            </span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', color: 'var(--status-danger-solid)' }}>warning</span>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 900, color: '#991b1b', marginTop: '0.4rem' }}>
-            {kpis.overdueCount}
+          <div className="tabular-nums" style={{ fontSize: '2.1rem', fontWeight: 900, color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            {kpis?.overdueCount ?? 0}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#7f1d1d', marginTop: '0.2rem', fontWeight: 600 }}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.35rem', fontWeight: 600 }}>
             Prospectos sin atención (+3 días)
           </div>
         </div>
@@ -349,24 +379,26 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
         <div
           onClick={() => setActiveSubTab('today')}
           style={{
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--surface-card)',
             padding: '1.25rem',
-            borderRadius: '12px',
-            border: '2px solid',
-            borderColor: activeSubTab === 'today' ? '#f59e0b' : '#fef3c7',
-            boxShadow: activeSubTab === 'today' ? '0 4px 15px rgba(245, 158, 11, 0.2)' : 'none',
+            borderRadius: '16px',
+            border: activeSubTab === 'today' ? '2px solid var(--status-warning-solid)' : '1px solid var(--border-subtle)',
+            borderLeft: '4px solid var(--status-warning-solid)',
+            boxShadow: activeSubTab === 'today' ? '0 8px 20px rgba(217, 119, 6, 0.15)' : 'var(--shadow-card)',
             cursor: 'pointer',
-            transition: 'all 0.2s'
+            transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#d97706', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>today</span>
-            Seguimientos para Hoy
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--status-warning-solid)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Seguimientos para Hoy
+            </span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', color: 'var(--status-warning-solid)' }}>today</span>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 900, color: '#b45309', marginTop: '0.4rem' }}>
-            {kpis.todayCount}
+          <div className="tabular-nums" style={{ fontSize: '2.1rem', fontWeight: 900, color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            {kpis?.todayCount ?? 0}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '0.2rem', fontWeight: 600 }}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.35rem', fontWeight: 600 }}>
             Programados para el día de hoy
           </div>
         </div>
@@ -375,125 +407,203 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
         <div
           onClick={() => setActiveSubTab('upcoming')}
           style={{
-            backgroundColor: '#ffffff',
+            backgroundColor: 'var(--surface-card)',
             padding: '1.25rem',
-            borderRadius: '12px',
-            border: '2px solid',
-            borderColor: activeSubTab === 'upcoming' ? '#2563eb' : '#bfdbfe',
-            boxShadow: activeSubTab === 'upcoming' ? '0 4px 15px rgba(37, 99, 235, 0.2)' : 'none',
+            borderRadius: '16px',
+            border: activeSubTab === 'upcoming' ? '2px solid var(--color-accent)' : '1px solid var(--border-subtle)',
+            borderLeft: '4px solid var(--color-accent)',
+            boxShadow: activeSubTab === 'upcoming' ? '0 8px 20px rgba(37, 99, 235, 0.15)' : 'var(--shadow-card)',
             cursor: 'pointer',
-            transition: 'all 0.2s'
+            transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>event_upcoming</span>
-            Próximos Seguimientos
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--color-accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Próximos Seguimientos
+            </span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', color: 'var(--color-accent)' }}>event_upcoming</span>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 900, color: '#1e40af', marginTop: '0.4rem' }}>
-            {kpis.upcomingCount}
+          <div className="tabular-nums" style={{ fontSize: '2.1rem', fontWeight: 900, color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            {kpis?.upcomingCount ?? 0}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#1e3a8a', marginTop: '0.2rem', fontWeight: 600 }}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.35rem', fontWeight: 600 }}>
             Próximos 7 días
           </div>
         </div>
 
         {/* KPI 4: Total Value */}
         <div style={{
-          backgroundColor: '#ffffff',
+          backgroundColor: 'var(--surface-card)',
           padding: '1.25rem',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0'
+          borderRadius: '16px',
+          border: '1px solid var(--border-subtle)',
+          borderLeft: '4px solid var(--status-success-solid)',
+          boxShadow: 'var(--shadow-card)'
         }}>
-          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>attach_money</span>
-            Valor en Pipeline Activo
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--status-success-solid)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Valor en Pipeline Activo
+            </span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', color: 'var(--status-success-solid)' }}>attach_money</span>
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#065f46', marginTop: '0.4rem' }}>
-            ${kpis.totalActiveValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          <div className="tabular-nums" style={{ fontSize: '1.85rem', fontWeight: 900, color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            ${(kpis?.totalActiveValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#047857', marginTop: '0.2rem', fontWeight: 600 }}>
-            {kpis.activeCount} oportunidades activas
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.35rem', fontWeight: 600 }}>
+            {kpis?.activeCount ?? 0} oportunidades activas
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="glass-card" style={{ padding: '1.5rem', backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+      <div style={{ padding: '1.5rem', backgroundColor: 'var(--surface-card)', borderRadius: '16px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
         {/* Navigation Tabs */}
-        <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveSubTab('overdue')}
             style={{
-              padding: '0.65rem 1.25rem',
+              padding: '0.55rem 1.1rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: activeSubTab === 'overdue' ? '#fef2f2' : 'transparent',
-              color: activeSubTab === 'overdue' ? '#ef4444' : '#64748b',
-              fontWeight: 800,
-              fontSize: '0.88rem',
+              backgroundColor: activeSubTab === 'overdue' ? 'var(--status-danger-bg)' : 'transparent',
+              color: activeSubTab === 'overdue' ? 'var(--status-danger-text)' : 'var(--text-secondary)',
+              fontWeight: 700,
+              fontSize: '0.85rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '0.4rem',
-              borderBottom: activeSubTab === 'overdue' ? '3px solid #ef4444' : '3px solid transparent'
+              borderBottom: activeSubTab === 'overdue' ? '2px solid var(--status-danger-solid)' : '2px solid transparent'
             }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>warning</span>
-            Seguimientos Vencidos / Retrasados ({overdueOpps.length})
+            <span className="material-symbols-outlined" style={{ fontSize: '1.05rem', color: activeSubTab === 'overdue' ? 'var(--status-danger-solid)' : 'inherit' }}>warning</span>
+            Seguimientos Vencidos ({overdueOpps.length})
           </button>
 
           <button
             onClick={() => setActiveSubTab('today')}
             style={{
-              padding: '0.65rem 1.25rem',
+              padding: '0.55rem 1.1rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: activeSubTab === 'today' ? '#fffbebf' : 'transparent',
-              color: activeSubTab === 'today' ? '#d97706' : '#64748b',
-              fontWeight: 800,
-              fontSize: '0.88rem',
+              backgroundColor: activeSubTab === 'today' ? 'var(--status-warning-bg)' : 'transparent',
+              color: activeSubTab === 'today' ? 'var(--status-warning-text)' : 'var(--text-secondary)',
+              fontWeight: 700,
+              fontSize: '0.85rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '0.4rem',
-              borderBottom: activeSubTab === 'today' ? '3px solid #f59e0b' : '3px solid transparent'
+              borderBottom: activeSubTab === 'today' ? '2px solid var(--status-warning-solid)' : '2px solid transparent'
             }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>today</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.05rem', color: activeSubTab === 'today' ? 'var(--status-warning-solid)' : 'inherit' }}>today</span>
             Seguimientos de Hoy ({todayOpps.length})
           </button>
 
           <button
             onClick={() => setActiveSubTab('upcoming')}
             style={{
-              padding: '0.65rem 1.25rem',
+              padding: '0.55rem 1.1rem',
               borderRadius: '8px',
               border: 'none',
-              backgroundColor: activeSubTab === 'upcoming' ? '#eff6ff' : 'transparent',
-              color: activeSubTab === 'upcoming' ? '#2563eb' : '#64748b',
-              fontWeight: 800,
-              fontSize: '0.88rem',
+              backgroundColor: activeSubTab === 'upcoming' ? 'var(--color-accent-subtle)' : 'transparent',
+              color: activeSubTab === 'upcoming' ? 'var(--color-accent-text)' : 'var(--text-secondary)',
+              fontWeight: 700,
+              fontSize: '0.85rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '0.4rem',
-              borderBottom: activeSubTab === 'upcoming' ? '3px solid #2563eb' : '3px solid transparent'
+              borderBottom: activeSubTab === 'upcoming' ? '2px solid var(--color-accent)' : '2px solid transparent'
             }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>event_upcoming</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.05rem', color: activeSubTab === 'upcoming' ? 'var(--color-accent)' : 'inherit' }}>event_upcoming</span>
             Próximos Seguimientos ({upcomingOpps.length})
           </button>
         </div>
 
-        {/* Action Table Renderer */}
+        {/* Action Table / Zero Inbox Renderer */}
         {(() => {
           const currentList = activeSubTab === 'overdue' ? overdueOpps : activeSubTab === 'today' ? todayOpps : upcomingOpps;
 
+          if (loading) {
+            return (
+              <div style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                  <span className="material-symbols-outlined" style={{ animation: 'spin 1s linear infinite', color: 'var(--color-primary)' }}>progress_activity</span>
+                  <span>Cargando datos de seguimiento...</span>
+                </div>
+              </div>
+            );
+          }
+
+          if (currentList.length === 0) {
+            return (
+              <div style={{ padding: '3.5rem 1.5rem', textAlign: 'center', borderRadius: '12px', backgroundColor: 'var(--surface-subtle)', border: '1px dashed var(--border-subtle)' }}>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '60px',
+                  height: '60px',
+                  borderRadius: '20px',
+                  backgroundColor: 'var(--status-success-bg)',
+                  border: '1px solid var(--status-success-border)',
+                  color: 'var(--status-success-solid)',
+                  marginBottom: '1rem',
+                  boxShadow: '0 0 16px rgba(0, 208, 132, 0.2)'
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '2.2rem' }}>task_alt</span>
+                </div>
+                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  ¡Bandeja de Seguimientos al Día!
+                </h3>
+                <p style={{ margin: '0 auto 1.5rem auto', maxWidth: '440px', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  No tienes prospectos ni cotizaciones pendientes de atención en esta sección. Puedes consultar el Pipeline CRM o iniciar una nueva conversación.
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => onOpenKanban()}
+                    style={{
+                      padding: '0.55rem 1.1rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: 'var(--gradient-primary)',
+                      color: '#FFFFFF',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(142, 36, 208, 0.25)'
+                    }}
+                  >
+                    Ver Pipeline CRM
+                  </button>
+                  <button
+                    onClick={() => onOpenChat()}
+                    style={{
+                      padding: '0.55rem 1.1rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-subtle)',
+                      backgroundColor: 'var(--surface-card)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Ir a Bandeja En Vivo
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           return (
-            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', color: '#0b2b4c' }}>
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '12px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+                  <tr style={{ backgroundColor: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em' }}>
                     <th style={{ padding: '0.85rem 1rem' }}>Cliente / Oportunidad</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Estado Alerta / Fecha</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Etapa CRM</th>
@@ -502,38 +612,27 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={5} style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>Cargando datos de seguimiento...</td>
-                    </tr>
-                  ) : currentList.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ padding: '2.5rem', textAlign: 'center', color: '#059669', fontWeight: 700 }}>
-                        No hay registros pendientes en esta sección.
-                      </td>
-                    </tr>
-                  ) : (
-                    currentList.map((opp) => (
-                      <tr key={opp.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '0.85rem 1rem' }}>
-                          <div style={{ fontWeight: 800, color: '#0b2b4c' }}>{opp.contact_name}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#2563eb', fontWeight: 600 }}>{opp.title}</div>
+                  {currentList.map((opp) => (
+                    <tr key={opp.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{opp.contact_name}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--color-primary)', fontWeight: 600 }}>{opp.title}</div>
                           {opp.contact_phone && (
-                            <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{opp.contact_phone}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace' }}>{opp.contact_phone}</div>
                           )}
                         </td>
 
                         <td style={{ padding: '0.85rem 1rem' }}>
                           {activeSubTab === 'overdue' ? (
-                            <span style={{ padding: '0.25rem 0.6rem', borderRadius: '12px', backgroundColor: '#fef2f2', color: '#ef4444', fontWeight: 800, fontSize: '0.75rem', border: '1px solid #fca5a5' }}>
+                            <span className="badge-clean badge-danger">
                               {opp.diffDays || 3} días sin contacto
                             </span>
                           ) : activeSubTab === 'today' ? (
-                            <span style={{ padding: '0.2rem 0.55rem', borderRadius: '8px', backgroundColor: '#fef3c7', color: '#d97706', fontWeight: 800, fontSize: '0.75rem' }}>
+                            <span className="badge-clean badge-warning">
                               Programado Hoy
                             </span>
                           ) : (
-                            <span style={{ fontWeight: 700, color: '#2563eb', fontSize: '0.78rem' }}>
+                            <span className="badge-clean badge-info">
                               {opp.next_followup_date || 'Próximo'}
                             </span>
                           )}
@@ -543,7 +642,7 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                           {getStageLabel(opp.stage)}
                         </td>
 
-                        <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#059669', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#065F46', fontFamily: 'monospace' }}>
                           ${(parseFloat(String(opp.value)) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </td>
 
@@ -557,14 +656,15 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                                 padding: '0.35rem 0.65rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: '#2563eb',
-                                color: '#ffffff',
+                                backgroundColor: '#2563EB',
+                                color: '#FFFFFF',
                                 fontWeight: 700,
                                 fontSize: '0.75rem',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '0.2rem'
+                                gap: '0.25rem',
+                                boxShadow: '0 1px 3px rgba(37, 99, 235, 0.2)'
                               }}
                             >
                               <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>forum</span>
@@ -577,15 +677,15 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                               style={{
                                 padding: '0.35rem 0.65rem',
                                 borderRadius: '6px',
-                                border: '1px solid #10b981',
-                                backgroundColor: '#ecfdf5',
-                                color: '#059669',
-                                fontWeight: 800,
+                                border: '1px solid #A7F3D0',
+                                backgroundColor: '#ECFDF5',
+                                color: '#065F46',
+                                fontWeight: 700,
                                 fontSize: '0.75rem',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '0.2rem'
+                                gap: '0.25rem'
                               }}
                             >
                               <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>event</span>
@@ -636,8 +736,7 @@ export const AdvisorHomeTab: React.FC<AdvisorHomeTabProps> = ({
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
+                    ))}
                 </tbody>
               </table>
             </div>

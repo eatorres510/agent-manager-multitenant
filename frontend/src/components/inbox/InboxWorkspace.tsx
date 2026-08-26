@@ -78,6 +78,19 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
   const [fetchingConvs, setFetchingConvs] = useState(false);
   const [fetchingMsgs, setFetchingMsgs] = useState(false);
 
+  // Mobile Single-Column Responsive View State
+  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+  const [mobileActiveView, setMobileActiveView] = useState<'list' | 'chat' | 'crm'>('list');
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Dynamic Advisors & Sales Teams list from Database & Chatwoot
   const [advisorsList, setAdvisorsList] = useState<{ id?: number; name: string; email: string; role?: string }[]>([]);
   const [teamsList, setTeamsList] = useState<{ id: number; name: string; team_key?: string }[]>([]);
@@ -1205,14 +1218,13 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       height: 'calc(100vh - 75px)',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#ffffff',
+      backgroundColor: 'var(--surface-canvas)',
       borderRadius: '16px',
-      padding: '0.85rem',
+      padding: '0.5rem',
       boxSizing: 'border-box',
       overflow: 'hidden',
-      color: '#0b2b4c',
-      border: '1px solid #e5e7eb',
-      boxShadow: '0 4px 20px rgba(11, 43, 76, 0.05)',
+      color: 'var(--text-primary)',
+      border: 'none',
       fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif'
     }}>
       {toast && (
@@ -1370,15 +1382,32 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
       )}
 
       {/* Main 3-Column Grid Container */}
-      <div style={{ display: 'grid', gridTemplateColumns: '310px minmax(0, 1fr) 300px', gap: '0.75rem', flex: 1, overflow: 'hidden', width: '100%' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '310px minmax(0, 1fr) 300px',
+        gap: '0.75rem',
+        flex: 1,
+        overflow: 'hidden',
+        width: '100%'
+      }}>
         
         {/* ================= COLUMN 1: NAVIGATION & CONVERSATION LIST ================= */}
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', borderRadius: '12px', padding: '0.85rem', border: '1px solid #e5e7eb', gap: '0.75rem', overflow: 'hidden' }}>
+        <div style={{
+          minWidth: 0,
+          display: (!isMobile || mobileActiveView === 'list') ? 'flex' : 'none',
+          flexDirection: 'column',
+          backgroundColor: 'var(--surface-subtle)',
+          borderRadius: '14px',
+          padding: '0.85rem',
+          border: '1px solid var(--border-subtle)',
+          gap: '0.75rem',
+          overflow: 'hidden'
+        }}>
           
           {/* Top Header Row with Action Buttons */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0b2b4c' }}>Bandeja de Entrada</h3>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>Bandeja de Entrada</h3>
               
               {/* Primary New Conversation Button */}
               <button
@@ -1387,7 +1416,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   padding: '0.35rem 0.65rem',
                   borderRadius: '6px',
                   border: 'none',
-                  backgroundColor: '#2563eb',
+                  background: 'var(--gradient-primary)',
                   color: '#ffffff',
                   fontWeight: 800,
                   fontSize: '0.75rem',
@@ -1395,13 +1424,13 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.25rem',
-                  boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)',
+                  boxShadow: '0 2px 8px rgba(142, 36, 208, 0.25)',
                   whiteSpace: 'nowrap'
                 }}
-                title="Nueva Conversación"
+                title="Iniciar Nueva Conversación"
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>add</span>
-                + Nuevo
+                + Nuevo Chat
               </button>
             </div>
 
@@ -1413,9 +1442,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   width: '100%',
                   padding: '0.35rem 0.5rem',
                   borderRadius: '6px',
-                  border: emergencyAiMode ? '1px solid #ef4444' : '1px solid #10b981',
-                  backgroundColor: emergencyAiMode ? '#fef2f2' : '#ecfdf5',
-                  color: emergencyAiMode ? '#dc2626' : '#047857',
+                  border: emergencyAiMode ? '1px solid var(--status-success-border)' : '1px solid var(--border-subtle)',
+                  backgroundColor: emergencyAiMode ? 'var(--status-success-bg)' : 'var(--surface-card)',
+                  color: emergencyAiMode ? 'var(--status-success-solid)' : 'var(--text-secondary)',
                   fontWeight: 800,
                   fontSize: '0.72rem',
                   cursor: 'pointer',
@@ -1423,26 +1452,26 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.3rem',
-                  boxShadow: emergencyAiMode ? '0 0 8px rgba(239, 68, 68, 0.2)' : 'none'
+                  boxShadow: emergencyAiMode ? '0 0 10px rgba(0, 208, 132, 0.25)' : 'none'
                 }}
-                title="Activa la IA para responder cuando los asesores estén ausentes"
+                title="Activa el Asistente de IA para responder consultas 24/7 fuera del horario comercial"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '0.9rem', color: emergencyAiMode ? 'var(--status-success-solid)' : 'var(--color-accent)' }}>
                   {emergencyAiMode ? 'bolt' : 'support_agent'}
                 </span>
-                {emergencyAiMode ? 'MODO AUSENCIA ACTIVO' : '⚡ Activar IA - Modo Ausencia'}
+                {emergencyAiMode ? '● Asistente 24/7 Activo' : 'Activar Asistente 24/7 (Ausencia)'}
               </button>
             )}
           </div>
 
           {/* Compact Horizontal Category Filter Tabs (Pill Strip) */}
-          <div style={{ display: 'flex', gap: '0.3rem', overflowX: 'auto', paddingBottom: '0.4rem', scrollbarWidth: 'thin' }}>
+          <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', paddingBottom: '0.4rem', scrollbarWidth: 'none' }}>
             {[
-              { id: 'all', label: 'Todos', count: conversations.length },
-              { id: 'unanswered', label: '🔴 Sin Respuesta', count: conversations.filter(c => isUnanswered(c)).length, highlight: true },
-              { id: 'assigned', label: 'Míos', count: myAssignedCount },
-              { id: 'ai', label: '🤖 Atendidos por IA / Fin de Semana', count: conversations.filter(c => c.status === 'pending' || (c.labels && (c.labels.includes('bot-escalado') || c.labels.includes('human-takeover')))).length },
-              { id: 'resolved', label: 'Resueltos', count: conversations.filter(c => c.status === 'resolved').length }
+              { id: 'all', label: 'Todos', icon: 'inbox', count: conversations.length },
+              { id: 'unanswered', label: 'Sin Respuesta', icon: 'schedule', count: conversations.filter(c => isUnanswered(c)).length, highlight: true },
+              { id: 'assigned', label: 'Míos', icon: 'person', count: myAssignedCount },
+              { id: 'ai', label: 'IA / Automático', icon: 'smart_toy', count: conversations.filter(c => c.status === 'pending' || (c.labels && (c.labels.includes('bot-escalado') || c.labels.includes('human-takeover')))).length },
+              { id: 'resolved', label: 'Resueltos', icon: 'check_circle', count: conversations.filter(c => c.status === 'resolved').length }
             ].map(cat => {
               const isActive = activeCategory === cat.id;
               const isRed = cat.highlight && cat.count > 0;
@@ -1453,30 +1482,54 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                   type="button"
                   onClick={() => setActiveCategory(cat.id as any)}
                   style={{
-                    padding: '0.3rem 0.65rem',
-                    borderRadius: '20px',
-                    border: isActive ? 'none' : isRed ? '1px solid #fca5a5' : '1px solid #cbd5e1',
-                    backgroundColor: isActive ? (isRed ? '#dc2626' : '#2563eb') : isRed ? '#fef2f2' : '#ffffff',
-                    color: isActive ? '#ffffff' : isRed ? '#dc2626' : '#475569',
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '8px',
+                    border: isActive
+                      ? '1px solid transparent'
+                      : isRed
+                        ? '1px solid var(--status-danger-border)'
+                        : '1px solid var(--border-subtle)',
+                    backgroundColor: isActive
+                      ? (isRed ? 'var(--status-danger-solid)' : 'var(--color-primary)')
+                      : isRed
+                        ? 'var(--status-danger-bg)'
+                        : 'var(--surface-card)',
+                    color: isActive
+                      ? '#FFFFFF'
+                      : isRed
+                        ? 'var(--status-danger-solid)'
+                        : 'var(--text-secondary)',
                     fontWeight: isActive || isRed ? 800 : 600,
-                    fontSize: '0.72rem',
+                    fontSize: '0.78rem',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.25rem',
-                    transition: 'all 0.15s',
-                    flexShrink: 0
+                    gap: '0.35rem',
+                    transition: 'all 0.15s ease',
+                    flexShrink: 0,
+                    boxShadow: isActive ? '0 2px 6px rgba(142, 36, 208, 0.25)' : 'none'
                   }}
                 >
+                  <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', color: 'inherit' }}>
+                    {cat.icon}
+                  </span>
                   <span>{cat.label}</span>
                   {cat.count > 0 && (
                     <span style={{
-                      fontSize: '0.62rem',
-                      padding: '0.05rem 0.35rem',
-                      borderRadius: '10px',
-                      backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : isRed ? '#fee2e2' : '#f1f5f9',
-                      color: isActive ? '#ffffff' : isRed ? '#991b1b' : '#0b2b4c',
+                      fontSize: '0.7rem',
+                      padding: '0.1rem 0.45rem',
+                      borderRadius: '9999px',
+                      backgroundColor: isActive
+                        ? 'rgba(255,255,255,0.22)'
+                        : isRed
+                          ? 'var(--status-danger-bg)'
+                          : 'var(--surface-subtle)',
+                      color: isActive
+                        ? '#FFFFFF'
+                        : isRed
+                          ? 'var(--status-danger-solid)'
+                          : 'var(--text-primary)',
                       fontWeight: 800
                     }}>
                       {cat.count}
@@ -1495,74 +1548,87 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between', 
-                padding: '0.5rem 0.65rem', 
-                backgroundColor: filterOnlyMine ? '#eff6ff' : '#ffffff', 
+                padding: '0.55rem 0.75rem', 
+                backgroundColor: filterOnlyMine ? 'var(--status-info-bg)' : 'var(--surface-card)', 
                 borderRadius: '8px', 
-                border: filterOnlyMine ? '1px solid #3b82f6' : '1px solid #e5e7eb',
+                border: filterOnlyMine ? '1px solid var(--status-info-border)' : '1px solid var(--border-subtle)',
                 cursor: 'pointer',
-                transition: 'all 0.15s'
+                transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: filterOnlyMine ? '#2563eb' : '#64748b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '1.05rem', color: filterOnlyMine ? 'var(--color-primary)' : 'var(--text-muted)' }}>
                   filter_alt
                 </span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: filterOnlyMine ? '#2563eb' : '#475569' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: filterOnlyMine ? 'var(--color-primary)' : 'var(--text-secondary)' }}>
                   Ver sólo mis chats ({userEmail.split('@')[0]})
                 </span>
               </div>
               <span style={{
-                fontSize: '0.65rem',
+                fontSize: '0.68rem',
                 fontWeight: 800,
-                padding: '0.1rem 0.45rem',
-                borderRadius: '10px',
-                backgroundColor: filterOnlyMine ? '#2563eb' : '#cbd5e1',
-                color: '#ffffff'
+                padding: '0.15rem 0.5rem',
+                borderRadius: '6px',
+                backgroundColor: filterOnlyMine ? 'var(--color-primary)' : 'var(--surface-subtle)',
+                color: filterOnlyMine ? '#FFFFFF' : 'var(--text-secondary)',
+                border: filterOnlyMine ? 'none' : '1px solid var(--border-subtle)'
               }}>
-                {filterOnlyMine ? 'SÓLO MIS CHATS' : 'TODOS'}
+                {filterOnlyMine ? 'ACTIVO' : 'TODOS'}
               </span>
             </div>
           )}
 
           {/* Search Input */}
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nombre o teléfono..."
-            style={{
-              width: '100%',
-              padding: '0.55rem 0.75rem',
-              borderRadius: '8px',
-              fontSize: '0.82rem',
-              backgroundColor: '#ffffff',
-              border: '1px solid #e5e7eb',
-              color: '#0b2b4c',
-              boxSizing: 'border-box'
-            }}
-          />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <span className="material-symbols-outlined" style={{
+              position: 'absolute',
+              left: '0.65rem',
+              fontSize: '1.1rem',
+              color: 'var(--text-muted)',
+              pointerEvents: 'none'
+            }}>
+              search
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por cliente o teléfono..."
+              style={{
+                width: '100%',
+                padding: '0.6rem 0.75rem 0.6rem 2.2rem',
+                borderRadius: '8px',
+                fontSize: '0.84rem',
+                backgroundColor: 'var(--surface-card)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
 
           {/* Recent Messages Header & List */}
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              MENSAJES RECIENTES
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.1rem 0.2rem' }}>
+              CONVERSACIONES RECIENTES
             </div>
 
             {fetchingConvs && conversations.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.8rem' }}>Cargando chats en vivo...</div>
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748B', fontSize: '0.85rem' }}>Cargando chats en vivo...</div>
             ) : filteredConvs.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748b', fontSize: '0.82rem', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
+              <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748B', fontSize: '0.85rem', backgroundColor: '#FFFFFF', borderRadius: '10px', border: '1px dashed #CBD5E1' }}>
                 {filterOnlyMine ? (
                   <>
-                    <span className="material-symbols-outlined" style={{ fontSize: '1.5rem', color: '#3b82f6', marginBottom: '0.3rem' }}>filter_alt_off</span>
-                    <div style={{ fontWeight: 700, color: '#0b2b4c' }}>Sin chats asignados a ti</div>
-                    <div style={{ fontSize: '0.75rem', marginTop: '0.2rem', color: '#64748b' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '1.75rem', color: '#2563EB', marginBottom: '0.4rem' }}>filter_alt_off</span>
+                    <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.9rem' }}>Sin chats asignados a ti</div>
+                    <div style={{ fontSize: '0.78rem', marginTop: '0.25rem', color: '#475569' }}>
                       Actualmente no tienes conversaciones asignadas a ({userEmail?.split('@')[0]}).
                     </div>
                     <button 
                       type="button" 
                       onClick={() => setFilterOnlyMine(false)}
-                      style={{ marginTop: '0.65rem', padding: '0.35rem 0.75rem', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}
+                      style={{ marginTop: '0.75rem', padding: '0.4rem 0.85rem', backgroundColor: '#2563EB', color: '#FFFFFF', border: 'none', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
                     >
                       Ver Bandeja General (TODOS)
                     </button>
@@ -1635,6 +1701,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       }
                       setSelectedConv(c);
                       selectedConvRef.current = c;
+                      if (window.innerWidth < 768) {
+                        setMobileActiveView('chat');
+                      }
                       setHasMoreOlderMsgs(true);
                       const cached = msgCacheRef.current[c.id.toString()] || c.messages || [];
                       setMessages(cached);
@@ -1642,34 +1711,47 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       fetchMessages(c.id.toString(), true);
                     }}
                     style={{
-                      padding: '0.65rem 0.75rem',
+                      padding: '0.75rem 0.85rem',
                       borderRadius: '10px',
-                      backgroundColor: isSelected ? '#eff6ff' : unanswered ? '#fff5f5' : isUnread ? '#f8fafc' : '#ffffff',
-                      borderLeft: unanswered ? '4px solid #ef4444' : isUnread ? '4px solid #2563eb' : isSelected ? '4px solid #3b82f6' : '4px solid transparent',
-                      borderTop: '1px solid #f1f5f9',
-                      borderRight: '1px solid #f1f5f9',
-                      borderBottom: '1px solid #f1f5f9',
+                      backgroundColor: isSelected
+                        ? 'var(--surface-elevated)'
+                        : unanswered
+                          ? 'var(--status-danger-bg)'
+                          : isUnread
+                            ? 'var(--surface-card)'
+                            : 'var(--surface-card)',
+                      borderLeft: isSelected
+                        ? '3px solid var(--color-accent)'
+                        : unanswered
+                          ? '3px solid var(--status-danger-solid)'
+                          : isUnread
+                            ? '3px solid var(--color-primary)'
+                            : '3px solid transparent',
+                      borderTop: '1px solid var(--border-subtle)',
+                      borderRight: '1px solid var(--border-subtle)',
+                      borderBottom: '1px solid var(--border-subtle)',
                       cursor: 'pointer',
-                      transition: 'all 0.15s',
+                      transition: 'all 0.15s ease',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.65rem'
+                      gap: '0.75rem',
+                      boxShadow: isSelected ? '0 2px 8px rgba(0, 206, 255, 0.15)' : 'none'
                     }}
                   >
                     {/* Avatar Circle */}
                     <div style={{
-                      width: '38px',
-                      height: '38px',
+                      width: '40px',
+                      height: '40px',
                       borderRadius: '50%',
                       backgroundColor: avatarBg,
-                      color: '#ffffff',
+                      color: '#FFFFFF',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontWeight: isUnread ? 900 : 700,
-                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
                       flexShrink: 0,
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                     }}>
                       {initials}
                     </div>
@@ -1677,89 +1759,81 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                     {/* Card Main Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
-                        <strong style={{ fontSize: '0.84rem', color: isUnread ? '#0f172a' : '#0b2b4c', fontWeight: isUnread ? 900 : 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <strong style={{
+                          fontSize: '0.88rem',
+                          color: 'var(--text-primary)',
+                          fontWeight: isUnread ? 800 : 700,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
                           {contactName}
                         </strong>
                         {formattedTime && (
-                          <span style={{ fontSize: '0.65rem', color: isUnread ? '#2563eb' : unanswered ? '#dc2626' : '#64748b', fontWeight: isUnread || unanswered ? 800 : 600, flexShrink: 0, marginLeft: '0.35rem' }}>
+                          <span style={{
+                            fontSize: '0.7rem',
+                            color: unanswered ? 'var(--status-danger-solid)' : isUnread ? 'var(--color-primary)' : 'var(--text-muted)',
+                            fontWeight: isUnread || unanswered ? 700 : 600,
+                            flexShrink: 0,
+                            marginLeft: '0.4rem'
+                          }}>
                             {formattedTime}
                           </span>
                         )}
                       </div>
 
-                      <div style={{ fontSize: '0.74rem', color: isUnread ? '#0f172a' : unanswered ? '#991b1b' : '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '0.2rem', fontWeight: isUnread ? 800 : unanswered ? 600 : 400 }}>
+                      <div style={{
+                        fontSize: '0.78rem',
+                        color: unanswered ? 'var(--status-danger-solid)' : 'var(--text-secondary)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        marginBottom: '0.35rem',
+                        fontWeight: isUnread ? 700 : 400,
+                        lineHeight: 1.35
+                      }}>
                         {lastMsgSnippet}
                       </div>
 
                       {/* Bottom Badges */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                         {isUnread && (
-                          <span style={{
-                            fontSize: '0.6rem',
-                            padding: '0.1rem 0.4rem',
-                            borderRadius: '4px',
-                            fontWeight: 900,
-                            backgroundColor: '#2563eb',
-                            color: '#ffffff'
-                          }}>
-                            🔴 NO LEÍDO ({c.unread_count})
+                          <span className="badge-clean badge-info" style={{ fontSize: '0.68rem', fontWeight: 800 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>mark_chat_unread</span>
+                            NO LEÍDO ({c.unread_count})
                           </span>
                         )}
 
                         {unanswered ? (
-                          <span style={{
-                            fontSize: '0.62rem',
-                            padding: '0.15rem 0.45rem',
-                            borderRadius: '4px',
-                            fontWeight: 900,
-                            backgroundColor: '#dc2626',
-                            color: '#ffffff',
-                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
-                          }}>
-                            🔴 PENDIENTE DE RESPUESTA {slaTime ? `(${slaTime})` : ''}
+                          <span className="badge-clean badge-danger" style={{ fontSize: '0.68rem', fontWeight: 800 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>schedule</span>
+                            PENDIENTE {slaTime ? `(${slaTime})` : ''}
                           </span>
                         ) : (
-                          <span style={{
-                            fontSize: '0.6rem',
-                            padding: '0.1rem 0.35rem',
-                            borderRadius: '4px',
-                            fontWeight: 700,
-                            backgroundColor: isPendingBot ? 'rgba(16, 185, 129, 0.12)' : 'rgba(37, 99, 235, 0.12)',
-                            color: isPendingBot ? '#059669' : '#2563eb'
-                          }}>
-                            {isPendingBot ? '🤖 IA' : '👤 Humano'}
+                          <span className={`badge-clean ${isPendingBot ? 'badge-success' : 'badge-neutral'}`} style={{ fontSize: '0.68rem' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>
+                              {isPendingBot ? 'smart_toy' : 'support_agent'}
+                            </span>
+                            {isPendingBot ? 'IA Sofía' : 'Humano'}
                           </span>
                         )}
 
                         {assigneeDisplayName ? (
-                          <span style={{
-                            fontSize: '0.62rem',
-                            fontWeight: 800,
-                            color: '#1e40af',
-                            backgroundColor: '#dbeafe',
-                            border: '1px solid #93c5fd',
-                            padding: '0.1rem 0.45rem',
-                            borderRadius: '4px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.2rem',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            maxWidth: '120px'
-                          }} title={`Asignado a: ${assigneeDisplayName}`}>
+                          <span
+                            className="badge-clean badge-info"
+                            style={{
+                              fontSize: '0.68rem',
+                              maxWidth: '130px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                            title={`Asignado a: ${assigneeDisplayName}`}
+                          >
                             <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>person</span>
                             {assigneeDisplayName}
                           </span>
                         ) : (
-                          <span style={{
-                            fontSize: '0.6rem',
-                            fontWeight: 600,
-                            color: '#64748b',
-                            backgroundColor: '#f1f5f9',
-                            padding: '0.1rem 0.35rem',
-                            borderRadius: '4px'
-                          }}>
+                          <span className="badge-clean badge-neutral" style={{ fontSize: '0.68rem' }}>
                             Sin Asignar
                           </span>
                         )}
@@ -1802,7 +1876,16 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
         </div>
 
         {/* ================= COLUMN 2: CENTER CHAT WINDOW (THE HERO ROOM) ================= */}
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <div style={{
+          minWidth: 0,
+          display: (!isMobile || mobileActiveView === 'chat') ? 'flex' : 'none',
+          flexDirection: 'column',
+          height: '100%',
+          backgroundColor: 'var(--surface-card)',
+          borderRadius: '12px',
+          border: '1px solid var(--border-subtle)',
+          overflow: 'hidden'
+        }}>
           {selectedConv ? (
             <>
               {/* Top Header Bar */}
@@ -1811,20 +1894,43 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '0.85rem 1.25rem',
-                backgroundColor: '#f8fafc',
-                borderBottom: '1px solid #e5e7eb'
+                backgroundColor: 'var(--surface-subtle)',
+                borderBottom: '1px solid var(--border-subtle)'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  {isMobile && (
+                    <button
+                      type="button"
+                      onClick={() => setMobileActiveView('list')}
+                      style={{
+                        padding: '0.35rem 0.6rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-subtle)',
+                        backgroundColor: 'var(--surface-card)',
+                        color: 'var(--text-primary)',
+                        fontWeight: 800,
+                        fontSize: '0.78rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.2rem',
+                        cursor: 'pointer',
+                        flexShrink: 0
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>arrow_back</span>
+                      Bandeja
+                    </button>
+                  )}
                   <span style={{
                     width: '10px',
                     height: '10px',
                     borderRadius: '50%',
-                    backgroundColor: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? '#10b981' : '#f59e0b',
+                    backgroundColor: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? 'var(--status-success-solid)' : 'var(--status-warning-solid)',
                     display: 'inline-block'
                   }} />
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0b2b4c' }}>
+                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                         {selectedConv.meta?.sender?.name || `Conversación #${selectedConv.id}`}
                       </h3>
 
@@ -1837,9 +1943,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '0.35rem',
-                        backgroundColor: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? '#ecfdf5' : '#fef3c7',
-                        color: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? '#047857' : '#b45309',
-                        border: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? '1px solid #a7f3d0' : '1px solid #fde68a'
+                        backgroundColor: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? 'var(--status-success-bg)' : 'var(--status-warning-bg)',
+                        color: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? 'var(--status-success-solid)' : 'var(--status-warning-solid)',
+                        border: selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? '1px solid var(--status-success-border)' : '1px solid var(--status-warning-border)'
                       }}>
                         <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>
                           {selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? 'smart_toy' : 'support_agent'}
@@ -1847,7 +1953,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         {selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? 'Atención por IA' : 'Atención Humana'}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.1rem' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.1rem' }}>
                       CHAT DE WHATSAPP • {selectedConv.meta?.sender?.phone_number || ''}
                     </div>
                   </div>
@@ -2003,7 +2109,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                     fetchOlderMessages();
                   }
                 }}
-                style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', backgroundColor: '#fafafa' }}
+                style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', backgroundColor: 'var(--surface-canvas)' }}
               >
                 {/* Load Older Messages Button / Indicator */}
                 {hasMoreOlderMsgs && messages.length >= 5 && (
@@ -2016,18 +2122,18 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         fontWeight: 700,
                         padding: '0.4rem 1.1rem',
                         borderRadius: '20px',
-                        backgroundColor: '#ffffff',
-                        color: '#2563eb',
-                        border: '1px solid #cbd5e1',
+                        backgroundColor: 'var(--surface-card)',
+                        color: 'var(--color-primary)',
+                        border: '1px solid var(--border-subtle)',
                         cursor: loadingOlderMsgs ? 'wait' : 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '0.4rem',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                        boxShadow: 'var(--shadow-sm)',
                         transition: 'all 0.15s ease'
                       }}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', color: '#2563eb' }}>history</span>
+                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', color: 'var(--color-primary)' }}>history</span>
                       {loadingOlderMsgs ? 'Cargando mensajes anteriores...' : 'Cargar mensajes anteriores'}
                     </button>
                   </div>
@@ -2035,7 +2141,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 
                 {/* Date Divider Pill */}
                 <div style={{ display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.25rem 0.85rem', borderRadius: '12px', backgroundColor: '#e5e7eb', color: '#0b2b4c', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.25rem 0.85rem', borderRadius: '12px', backgroundColor: 'var(--surface-subtle)', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', border: '1px solid var(--border-subtle)' }}>
                     HOY
                   </span>
                 </div>
@@ -2061,17 +2167,17 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           <div style={{
                             fontSize: '0.72rem',
                             fontWeight: 600,
-                            backgroundColor: '#f1f5f9',
-                            color: '#475569',
+                            backgroundColor: 'var(--surface-subtle)',
+                            color: 'var(--text-secondary)',
                             padding: '0.3rem 0.85rem',
                             borderRadius: '20px',
-                            border: '1px solid #cbd5e1',
+                            border: '1px solid var(--border-subtle)',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '0.35rem',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                            boxShadow: 'var(--shadow-sm)'
                           }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '0.85rem', color: '#64748b' }}>info</span>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>info</span>
                             <span>{formatActivityMessage(m.content)}</span>
                             {m.created_at && (
                               <span style={{ opacity: 0.65, fontSize: '0.68rem', marginLeft: '0.35rem' }}>
@@ -2099,37 +2205,25 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       (!m.sender && !isPrivate)
                     );
 
-                    const isTechAccount = 
-                      senderName.toLowerCase().includes('anthony') ||
-                      senderName.toLowerCase().includes('upagency') ||
-                      senderName.toLowerCase().includes('eitserv') ||
-                      senderName.toLowerCase().includes('platform') ||
-                      senderName === 'SICSA NICARAGUA' ||
-                      senderEmail.toLowerCase().includes('upagency') ||
-                      senderEmail.toLowerCase().includes('eitserv') ||
-                      senderEmail.toLowerCase().includes('platform.local');
+                    // Determine real human agent name (NEVER force assigned advisor name on messages sent by others!)
+                    const explicitSenderEmail = senderEmail || (m.sender as any)?.email || '';
+                    const explicitSenderName = senderName || m.sender?.name || '';
 
                     const matchedAdvisor = advisorsList.find(a => 
-                      !isTechAccount && (
-                        (senderEmail && a.email?.toLowerCase() === senderEmail.toLowerCase()) ||
-                        ((m.sender as any)?.id && a.id === (m.sender as any).id)
-                      )
+                      (explicitSenderEmail && a.email?.toLowerCase() === explicitSenderEmail.toLowerCase()) ||
+                      ((m.sender as any)?.id && a.id === (m.sender as any).id)
                     );
 
-                    const assignedAdvisor = advisorsList.find(a => 
-                      (selectedConv?.meta?.assignee?.email && a.email?.toLowerCase() === selectedConv.meta.assignee.email.toLowerCase()) ||
-                      (selectedConv?.meta?.assignee?.name && a.name?.toLowerCase() === selectedConv.meta.assignee.name.toLowerCase())
-                    );
-
-                    const fallbackHumanName = assignedAdvisor?.name || 
-                      (selectedConv?.meta?.assignee?.name && selectedConv.meta.assignee.name !== 'SICSA NICARAGUA' ? selectedConv.meta.assignee.name : '') ||
-                      (userEmail ? userEmail.split('@')[0] : 'Asesor Humano');
-
-                    const humanAgentName = isTechAccount
-                      ? fallbackHumanName
-                      : (matchedAdvisor?.name || 
-                         (matchedAdvisor?.email ? matchedAdvisor.email.split('@')[0] : '') ||
-                         (senderName && !isTechAccount && senderName !== 'Bot' ? senderName : fallbackHumanName));
+                    let humanAgentName = 'Asesor Comercial';
+                    if (matchedAdvisor && matchedAdvisor.name && !matchedAdvisor.name.includes('SICSA NICARAGUA')) {
+                      humanAgentName = matchedAdvisor.name;
+                    } else if (explicitSenderName && !['SICSA NICARAGUA', 'Bot', 'agent_bot'].includes(explicitSenderName)) {
+                      humanAgentName = explicitSenderName;
+                    } else if (explicitSenderEmail && explicitSenderEmail.includes('@')) {
+                      humanAgentName = explicitSenderEmail.split('@')[0];
+                    } else {
+                      humanAgentName = 'Asesor Comercial (SICSA)';
+                    }
 
                     return (
                       <div
@@ -2137,43 +2231,56 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         style={{
                           alignSelf: isIncoming ? 'flex-start' : 'flex-end',
                           maxWidth: '78%',
-                          padding: '0.9rem 1.15rem',
-                          borderRadius: '14px',
+                          padding: '0.85rem 1.15rem',
+                          borderRadius: isIncoming ? '14px 14px 14px 2px' : '14px 14px 2px 14px',
                           backgroundColor: isPrivate
-                            ? '#fef3c7' // Light Amber Private Note
+                            ? 'rgba(255, 205, 52, 0.12)'
                             : isIncoming
-                              ? '#f1f5f9' // Light Slate Incoming
+                              ? 'var(--surface-subtle)'
                               : isBot
-                                ? '#ecfdf5' // Soft Emerald Bot
-                                : '#0b2b4c', // Navy Corporate Operator
+                                ? 'rgba(0, 208, 132, 0.12)'
+                                : 'var(--gradient-primary)',
                           border: isPrivate
-                            ? '1px solid #f59e0b'
+                            ? '1px solid rgba(255, 205, 52, 0.35)'
                             : isIncoming
-                              ? '1px solid #e5e7eb'
+                              ? '1px solid var(--border-subtle)'
                               : isBot
-                                ? '1px solid #10b981'
-                                : '1px solid #0b2b4c',
+                                ? '1px solid rgba(0, 208, 132, 0.3)'
+                                : 'none',
                           color: isPrivate
-                            ? '#92400e'
+                            ? 'var(--status-warning-solid)'
                             : isIncoming
-                              ? '#0b2b4c'
+                              ? 'var(--text-primary)'
                               : isBot
-                                ? '#065f46'
-                                : '#ffffff',
-                          fontSize: '0.88rem',
-                          boxShadow: '0 2px 8px rgba(11, 43, 76, 0.04)'
+                                ? 'var(--text-primary)'
+                                : '#FFFFFF',
+                          fontSize: '0.9rem',
+                          lineHeight: 1.5,
+                          boxShadow: 'var(--shadow-sm)'
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '0.72rem', marginBottom: '0.4rem' }}>
-                          <span style={{ fontWeight: 800, color: isPrivate ? '#b45309' : isIncoming ? '#64748b' : isBot ? '#047857' : '#93c5fd', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '0.74rem', marginBottom: '0.35rem' }}>
+                          <span style={{
+                            fontWeight: 800,
+                            color: isPrivate
+                              ? 'var(--status-warning-solid)'
+                              : isIncoming
+                                ? 'var(--text-secondary)'
+                                : isBot
+                                  ? 'var(--status-success-solid)'
+                                  : '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem'
+                          }}>
                             {isPrivate ? (
-                              <><span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>lock</span> NOTA PRIVADA INTERNA</>
+                              <><span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>lock</span> NOTA INTERNA</>
                             ) : isIncoming ? (
-                              <><span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>person</span> {selectedConv.meta?.sender?.name || 'Cliente'}</>
+                              <><span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>person</span> {selectedConv.meta?.sender?.name || 'Cliente'}</>
                             ) : isBot ? (
-                              <><span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>smart_toy</span> Asistente IA Sofía</>
+                              <><span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>smart_toy</span> Asistente IA Sofía</>
                             ) : (
-                              <><span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>support_agent</span> {humanAgentName}</>
+                              <><span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>support_agent</span> {humanAgentName}</>
                             )}
                           </span>
                         </div>
@@ -2383,8 +2490,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
                               if (isAudio) {
                                 return (
-                                  <div key={attIdx} style={{ backgroundColor: '#e0f2fe', padding: '0.6rem', borderRadius: '8px', marginTop: '0.25rem', border: '1px solid #0284c7' }}>
-                                    <div style={{ fontSize: '0.72rem', color: '#0369a1', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                  <div key={attIdx} style={{ backgroundColor: 'rgba(0, 206, 255, 0.12)', padding: '0.6rem', borderRadius: '8px', marginTop: '0.25rem', border: '1px solid rgba(0, 206, 255, 0.3)' }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--color-accent)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                       <span className="material-symbols-outlined" style={{ fontSize: '0.9rem' }}>mic</span>
                                       Audio de WhatsApp
                                     </div>
@@ -2401,7 +2508,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                                         link.target = '_blank';
                                         link.textContent = '🎵 Descargar audio';
                                         link.style.fontSize = '0.78rem';
-                                        link.style.color = '#0369a1';
+                                        link.style.color = 'var(--color-accent)';
                                         target.parentNode?.appendChild(link);
                                       }}
                                     />
@@ -2415,7 +2522,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                                     <video
                                       controls
                                       src={dataUrl}
-                                      style={{ maxWidth: '280px', maxHeight: '200px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                                      style={{ maxWidth: '280px', maxHeight: '200px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}
                                     />
                                   </div>
                                 );
@@ -2427,7 +2534,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                                     <img
                                       src={dataUrl}
                                       alt="Adjunto"
-                                      style={{ maxWidth: '260px', maxHeight: '220px', borderRadius: '8px', objectFit: 'cover', cursor: 'pointer', border: '1px solid #e5e7eb' }}
+                                      style={{ maxWidth: '260px', maxHeight: '220px', borderRadius: '8px', objectFit: 'cover', cursor: 'pointer', border: '1px solid var(--border-subtle)' }}
                                       onClick={() => window.open(dataUrl, '_blank')}
                                     />
                                   </div>
@@ -2448,13 +2555,13 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                                         alignItems: 'center',
                                         gap: '0.4rem',
                                         padding: '0.45rem 0.85rem',
-                                        backgroundColor: '#ffffff',
+                                        backgroundColor: 'var(--surface-card)',
                                         borderRadius: '6px',
-                                        color: '#2563eb',
+                                        color: 'var(--color-primary)',
                                         fontSize: '0.78rem',
                                         textDecoration: 'none',
                                         fontWeight: 'bold',
-                                        border: '1px solid #e5e7eb'
+                                        border: '1px solid var(--border-subtle)'
                                       }}
                                     >
                                       <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>
@@ -2476,9 +2583,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                                       rel="noreferrer"
                                       style={{
                                         display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                                        padding: '0.45rem 0.85rem', backgroundColor: '#ffffff',
-                                        borderRadius: '6px', color: '#64748b', fontSize: '0.78rem',
-                                        textDecoration: 'none', fontWeight: 'bold', border: '1px solid #e5e7eb'
+                                        padding: '0.45rem 0.85rem', backgroundColor: 'var(--surface-card)',
+                                        borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '0.78rem',
+                                        textDecoration: 'none', fontWeight: 'bold', border: '1px solid var(--border-subtle)'
                                       }}
                                     >
                                       <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>attach_file</span>
@@ -2522,19 +2629,19 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
               {/* Bottom Message Composer */}
               {role !== 'readonly' ? (
-                <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb' }}>
+                <div style={{ padding: '1rem', backgroundColor: 'var(--surface-subtle)', borderTop: '1px solid var(--border-subtle)' }}>
                   
                   {/* Mode Selector Tabs (Public Reply vs Private Note) */}
-                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
                     <button
                       type="button"
                       onClick={() => setReplyMode('public')}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        borderBottom: replyMode === 'public' ? '2px solid #2563eb' : '2px solid transparent',
-                        color: replyMode === 'public' ? '#2563eb' : '#64748b',
-                        fontWeight: 700,
+                        borderBottom: replyMode === 'public' ? '2px solid var(--color-primary)' : '2px solid transparent',
+                        color: replyMode === 'public' ? 'var(--color-primary)' : 'var(--text-muted)',
+                        fontWeight: 800,
                         fontSize: '0.82rem',
                         cursor: 'pointer',
                         paddingBottom: '0.25rem',
@@ -2552,9 +2659,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        borderBottom: replyMode === 'private' ? '2px solid #d97706' : '2px solid transparent',
-                        color: replyMode === 'private' ? '#d97706' : '#64748b',
-                        fontWeight: 700,
+                        borderBottom: replyMode === 'private' ? '2px solid var(--status-warning-solid)' : '2px solid transparent',
+                        color: replyMode === 'private' ? 'var(--status-warning-solid)' : 'var(--text-muted)',
+                        fontWeight: 800,
                         fontSize: '0.82rem',
                         cursor: 'pointer',
                         paddingBottom: '0.25rem',
@@ -2577,11 +2684,11 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '0.65rem 1rem',
-                        backgroundColor: '#fef2f2',
+                        backgroundColor: 'var(--status-danger-bg)',
                         borderRadius: '10px',
-                        border: '1px solid #fca5a5'
+                        border: '1px solid var(--status-danger-border)'
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: 'var(--status-danger-solid)', fontWeight: 800, fontSize: '0.85rem' }}>
                           <span className="material-symbols-outlined" style={{ fontSize: '1.25rem' }}>mic</span>
                           <span>Grabando Nota de Voz de WhatsApp: {Math.floor(recordingTimer / 60).toString().padStart(2, '0')}:{(recordingTimer % 60).toString().padStart(2, '0')}</span>
                         </div>
@@ -2590,14 +2697,14 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           <button
                             type="button"
                             onClick={cancelAudioRecording}
-                            style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
+                            style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-card)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
                           >
                             Cancelar
                           </button>
                           <button
                             type="button"
                             onClick={stopAudioRecording}
-                            style={{ padding: '0.4rem 0.85rem', borderRadius: '6px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                            style={{ padding: '0.4rem 0.85rem', borderRadius: '6px', border: 'none', backgroundColor: 'var(--status-danger-solid)', color: '#ffffff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                           >
                             <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>stop</span> Adjuntar Audio
                           </button>
@@ -2612,27 +2719,27 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '0.55rem 0.85rem',
-                        backgroundColor: selectedFile.type.startsWith('audio/') ? '#ecfdf5' : '#eff6ff',
+                        backgroundColor: selectedFile.type.startsWith('audio/') ? 'var(--status-success-bg)' : 'var(--status-info-bg)',
                         borderRadius: '8px',
-                        border: selectedFile.type.startsWith('audio/') ? '1px solid #a7f3d0' : '1px solid #bfdbfe'
+                        border: selectedFile.type.startsWith('audio/') ? '1px solid var(--status-success-border)' : '1px solid var(--status-info-border)'
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.82rem', color: selectedFile.type.startsWith('audio/') ? '#047857' : '#1e40af', fontWeight: 700, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.82rem', color: selectedFile.type.startsWith('audio/') ? 'var(--status-success-solid)' : 'var(--color-primary)', fontWeight: 700, flex: 1 }}>
                           {selectedFile.type.startsWith('image/') ? (
                             <img
                               src={URL.createObjectURL(selectedFile)}
                               alt="Vista previa del recorte"
-                              style={{ width: '42px', height: '42px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #93c5fd' }}
+                              style={{ width: '42px', height: '42px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-subtle)' }}
                             />
                           ) : selectedFile.type.startsWith('audio/') ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', width: '100%' }}>
-                              <span className="material-symbols-outlined" style={{ fontSize: '1.4rem', color: '#059669' }}>mic</span>
+                              <span className="material-symbols-outlined" style={{ fontSize: '1.4rem', color: 'var(--status-success-solid)' }}>mic</span>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>Nota de Voz Grabada ({(selectedFile.size / 1024).toFixed(1)} KB)</div>
                                 <audio controls src={URL.createObjectURL(selectedFile)} style={{ height: '32px', width: '100%', marginTop: '0.2rem' }} />
                               </div>
                             </div>
                           ) : (
-                            <span className="material-symbols-outlined" style={{ fontSize: '1.3rem', color: '#2563eb' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.3rem', color: 'var(--color-primary)' }}>
                               {selectedFile.type.includes('pdf') ? 'picture_as_pdf' : 'attach_file'}
                             </span>
                           )}
@@ -2640,7 +2747,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           {!selectedFile.type.startsWith('audio/') && (
                             <div>
                               <div style={{ fontWeight: 800, fontSize: '0.85rem' }}>{selectedFile.name}</div>
-                              <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', fontWeight: 600 }}>
                                 {(selectedFile.size / 1024).toFixed(1)} KB • Listo para enviar a WhatsApp
                               </div>
                             </div>
@@ -2649,7 +2756,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         <button
                           type="button"
                           onClick={() => setSelectedFile(null)}
-                          style={{ border: 'none', background: 'none', color: '#ef4444', fontWeight: 800, cursor: 'pointer', fontSize: '1.1rem', padding: '0.2rem 0.5rem', marginLeft: '0.5rem' }}
+                          style={{ border: 'none', background: 'none', color: 'var(--status-danger-solid)', fontWeight: 800, cursor: 'pointer', fontSize: '1.1rem', padding: '0.2rem 0.5rem', marginLeft: '0.5rem' }}
                           title="Quitar archivo adjunto"
                         >
                           ✕
@@ -2668,19 +2775,19 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                             alignItems: 'center',
                             gap: '0.75rem',
                             padding: '0.85rem 1rem',
-                            backgroundColor: '#fef2f2',
-                            border: '2px solid #ef4444',
+                            backgroundColor: 'var(--status-danger-bg)',
+                            border: '2px solid var(--status-danger-solid)',
                             borderRadius: '10px',
-                            color: '#991b1b',
+                            color: 'var(--status-danger-solid)',
                             fontSize: '0.84rem',
                             fontWeight: 800,
                             marginBottom: '0.65rem',
-                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)'
+                            boxShadow: 'var(--shadow-md)'
                           }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: '#dc2626' }}>lock</span>
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: 'var(--status-danger-solid)' }}>lock</span>
                             <div>
                               🔒 ATENCIÓN INTERVENIDA POR IA TRAS 10M DE INACTIVIDAD
-                              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#b91c1c', marginTop: '0.15rem' }}>
+                              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--status-danger-solid)', marginTop: '0.15rem' }}>
                                 La Oportunidad fue registrada en el CRM por Sofía IA. Contacta a tu Supervisor para autorizar y liberar el chat.
                               </div>
                             </div>
@@ -2701,18 +2808,18 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                             alignItems: 'center',
                             gap: '0.65rem',
                             padding: '0.65rem 0.9rem',
-                            backgroundColor: '#fef3c7',
-                            border: '1px solid #f59e0b',
+                            backgroundColor: 'var(--status-warning-bg)',
+                            border: '1px solid var(--status-warning-border)',
                             borderRadius: '8px',
-                            color: '#92400e',
+                            color: 'var(--status-warning-solid)',
                             fontSize: '0.82rem',
                             fontWeight: 800,
                             marginBottom: '0.5rem'
                           }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: '#d97706' }}>warning</span>
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: 'var(--status-warning-solid)' }}>warning</span>
                             <div>
                               ⚠️ <strong>{lock?.agent_name}</strong> está redactando una respuesta para este cliente en este momento.
-                              <div style={{ fontSize: '0.74rem', fontWeight: 600, color: '#b45309', marginTop: '0.1rem' }}>
+                              <div style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--status-warning-solid)', marginTop: '0.1rem' }}>
                                 Por favor espera a que termine para no duplicar ni cruzar atención.
                               </div>
                             </div>
@@ -2748,7 +2855,13 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         const clipboardData = e.clipboardData;
                         if (!clipboardData) return;
 
-                        // 1. Check items (from Snipping Tool Win+Shift+S / Ctrl+V clipboard)
+                        // 1. If clipboard contains text (pasting text/links/notes), allow normal text paste and DO NOT attach images!
+                        const pastedText = clipboardData.getData('text/plain');
+                        if (pastedText && pastedText.trim().length > 0) {
+                          return;
+                        }
+
+                        // 2. Only if NO text is present (pure image screenshot Win+Shift+S / Snipping Tool), attach the image:
                         const items = clipboardData.items;
                         if (items) {
                           for (let i = 0; i < items.length; i++) {
@@ -2756,21 +2869,12 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                               const blob = items[i].getAsFile();
                               if (blob) {
                                 const extension = blob.type.split('/')[1] || 'png';
-                                const file = new File([blob], `recorte_${new Date().getTime()}.${extension}`, { type: blob.type });
+                                const file = new File([blob], `captura_${new Date().getTime()}.${extension}`, { type: blob.type });
                                 setSelectedFile(file);
-                                showToast(`Recorte de imagen pegado exitosamente (${(file.size / 1024).toFixed(1)} KB)`);
+                                showToast(`📷 Captura de pantalla adjuntada (${(file.size / 1024).toFixed(1)} KB)`);
                                 return;
                               }
                             }
-                          }
-                        }
-
-                        // 2. Fallback to clipboard files
-                        if (clipboardData.files && clipboardData.files.length > 0) {
-                          const file = clipboardData.files[0];
-                          if (file) {
-                            setSelectedFile(file);
-                            showToast(`Archivo del portapapeles adjuntado: ${file.name}`);
                           }
                         }
                       }}
@@ -2780,9 +2884,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         width: '100%',
                         padding: '0.75rem 1rem',
                         borderRadius: '10px',
-                        border: '1px solid #e5e7eb',
-                        backgroundColor: '#ffffff',
-                        color: '#0b2b4c',
+                        border: '1px solid var(--border-subtle)',
+                        backgroundColor: 'var(--surface-card)',
+                        color: 'var(--text-primary)',
                         fontSize: '0.88rem',
                         fontFamily: 'inherit',
                         resize: 'none',
@@ -2821,9 +2925,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           style={{
                             padding: '0.45rem 0.75rem',
                             borderRadius: '8px',
-                            border: '1px solid #e5e7eb',
-                            backgroundColor: '#ffffff',
-                            color: '#2563eb',
+                            border: '1px solid var(--border-subtle)',
+                            backgroundColor: 'var(--surface-card)',
+                            color: 'var(--color-primary)',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -2841,9 +2945,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           style={{
                             padding: '0.45rem 0.75rem',
                             borderRadius: '8px',
-                            border: isRecordingAudio ? '1px solid #ef4444' : '1px solid #e5e7eb',
-                            backgroundColor: isRecordingAudio ? '#fee2e2' : '#ffffff',
-                            color: isRecordingAudio ? '#dc2626' : '#2563eb',
+                            border: isRecordingAudio ? '1px solid var(--status-danger-solid)' : '1px solid var(--border-subtle)',
+                            backgroundColor: isRecordingAudio ? 'var(--status-danger-bg)' : 'var(--surface-card)',
+                            color: isRecordingAudio ? 'var(--status-danger-solid)' : 'var(--color-primary)',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -2892,52 +2996,62 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
         </div>
 
         {/* ================= COLUMN 3: RIGHT SIDEBAR (CONTACT DETAILS & CRM) ================= */}
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', borderRadius: '12px', padding: '1rem', border: '1px solid #e5e7eb', gap: '1rem', overflowY: 'auto' }}>
-          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0b2b4c', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: '#2563eb' }}>person</span>
+        <div style={{
+          minWidth: 0,
+          display: (!isMobile || mobileActiveView === 'crm') ? 'flex' : 'none',
+          flexDirection: 'column',
+          backgroundColor: 'var(--surface-card)',
+          borderRadius: '12px',
+          padding: '1rem',
+          border: '1px solid var(--border-subtle)',
+          gap: '1rem',
+          overflowY: 'auto'
+        }}>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: 'var(--color-primary)' }}>person</span>
             Información del Contacto & CRM
           </h3>
 
           {selectedConv ? (
             <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Nombre del Cliente:</span>
-                <strong style={{ fontSize: '0.9rem', color: '#0b2b4c' }}>{selectedConv.meta?.sender?.name || 'Cliente sin nombre'}</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: 'var(--surface-subtle)', padding: '0.85rem', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>Nombre del Cliente:</span>
+                <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{selectedConv.meta?.sender?.name || 'Cliente sin nombre'}</strong>
                 
                 {selectedConv.meta?.sender?.phone_number && (
                   <>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, marginTop: '0.4rem' }}>WhatsApp / Teléfono:</span>
-                    <span style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 700 }}>{selectedConv.meta?.sender?.phone_number}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, marginTop: '0.4rem' }}>WhatsApp / Teléfono:</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--color-accent)', fontWeight: 700 }}>{selectedConv.meta?.sender?.phone_number}</span>
                   </>
                 )}
               </div>
 
               {/* Customer Maintenance & Workshop Appointments Section */}
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.15rem', color: '#7c3aed' }}>calendar_month</span>
+              <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '0.85rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.15rem', color: 'var(--color-primary)' }}>calendar_month</span>
                   Citas de Taller ({customerAppointments.length}):
                 </div>
 
                 {customerAppointments.length === 0 ? (
-                  <div style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic', padding: '0.4rem', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '0.4rem', backgroundColor: 'var(--surface-card)', borderRadius: '6px' }}>
                     Sin citas agendadas actualmente para este cliente.
                   </div>
                 ) : (
                   customerAppointments.map((appt) => (
-                    <div key={appt.id} style={{ padding: '0.65rem', borderRadius: '8px', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    <div key={appt.id} style={{ padding: '0.65rem', borderRadius: '8px', backgroundColor: 'rgba(142, 36, 208, 0.12)', border: '1px solid rgba(142, 36, 208, 0.28)', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#6d28d9' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-accent)' }}>
                           ID Reserva #{appt.id} • {appt.appointment_time} hs
                         </span>
-                        <span style={{ fontSize: '0.62rem', padding: '0.12rem 0.4rem', borderRadius: '4px', backgroundColor: '#7c3aed', color: '#ffffff', fontWeight: 800 }}>
+                        <span style={{ fontSize: '0.62rem', padding: '0.12rem 0.4rem', borderRadius: '4px', backgroundColor: 'var(--color-primary)', color: '#ffffff', fontWeight: 800 }}>
                           🟢 Confirmada
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0b2b4c' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                         🛠️ {appt.service || 'Mantenimiento y Reparación'}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#4c1d95', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
                         📅 {new Date(appt.appointment_date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                       </div>
                     </div>
@@ -2946,10 +3060,10 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
               </div>
 
               {/* Agent & Sales Team Assignment Section */}
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '0.85rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0b2b4c', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#2563eb' }}>manage_accounts</span>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--color-primary)' }}>manage_accounts</span>
                     Vendedor Asignado ({salesAdvisorsOnly.length} Asesores):
                   </label>
                   {(() => {
@@ -3026,9 +3140,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                             width: '100%',
                             padding: '0.45rem',
                             borderRadius: '8px',
-                            backgroundColor: canAssignSales ? '#f8fafc' : '#f1f5f9',
-                            border: '1px solid #cbd5e1',
-                            color: canAssignSales ? '#0b2b4c' : '#64748b',
+                            backgroundColor: canAssignSales ? 'var(--surface-card)' : 'var(--surface-subtle)',
+                            border: '1px solid var(--border-subtle)',
+                            color: canAssignSales ? 'var(--text-primary)' : 'var(--text-muted)',
                             fontSize: '0.8rem',
                             fontWeight: 700,
                             outline: 'none',
@@ -3043,8 +3157,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           ))}
                         </select>
                         {!canAssignSales && (
-                          <span style={{ fontSize: '0.68rem', color: '#64748b', fontStyle: 'italic', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>lock</span>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>lock</span>
                             Reasignación restringida a Administradores y Mercadeo.
                           </span>
                         )}
@@ -3054,8 +3168,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0b2b4c', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#7c3aed' }}>groups</span>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--color-primary)' }}>groups</span>
                     Equipo de Ventas (Team):
                   </label>
                   <select
@@ -3083,9 +3197,9 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       width: '100%',
                       padding: '0.45rem',
                       borderRadius: '8px',
-                      backgroundColor: '#f8fafc',
-                      border: '1px solid #e5e7eb',
-                      color: '#0b2b4c',
+                      backgroundColor: 'var(--surface-card)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
                       fontSize: '0.8rem',
                       fontWeight: 700
                     }}
@@ -3101,22 +3215,22 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
               </div>
 
               {/* Assignment History Timeline Card */}
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0b2b4c', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: '#2563eb' }}>history</span>
+              <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '0.85rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: 'var(--color-primary)' }}>history</span>
                   Historial de Asignaciones:
                 </span>
 
                 {loadingHistory ? (
-                  <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontStyle: 'italic' }}>Cargando historial de atención...</span>
+                  <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Cargando historial de atención...</span>
                 ) : assignmentHistory.length === 0 ? (
-                  <span style={{ fontSize: '0.73rem', color: '#94a3b8', fontStyle: 'italic' }}>Sin cambios de asignación registrados.</span>
+                  <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin cambios de asignación registrados.</span>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '160px', overflowY: 'auto', paddingRight: '0.2rem' }}>
                     {assignmentHistory.map((item, idx) => (
-                      <div key={item.id || idx} style={{ fontSize: '0.73rem', padding: '0.4rem 0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', borderLeft: '3px solid #3b82f6' }}>
-                        <div style={{ fontWeight: 700, color: '#1e293b' }}>{item.content}</div>
-                        <div style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '0.15rem' }}>
+                      <div key={item.id || idx} style={{ fontSize: '0.73rem', padding: '0.4rem 0.5rem', backgroundColor: 'var(--surface-card)', borderRadius: '6px', borderLeft: '3px solid var(--color-primary)' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.content}</div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
                           {new Date(item.timestamp).toLocaleString()} • por {item.user_name}
                         </div>
                       </div>
@@ -3126,8 +3240,8 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
               </div>
 
               {/* CRM Pipeline Stage Selector */}
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0b2b4c', marginBottom: '0.5rem', display: 'block' }}>
+              <div style={{ backgroundColor: 'var(--surface-card)', padding: '0.85rem', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'block' }}>
                   Etapa Pipeline CRM:
                 </label>
                 <select
@@ -3137,20 +3251,20 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                     width: '100%',
                     padding: '0.5rem',
                     borderRadius: '8px',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e5e7eb',
-                    color: '#0b2b4c',
+                    backgroundColor: 'var(--surface-subtle)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
                     fontSize: '0.8rem',
                     fontWeight: 700
                   }}
                 >
-                  <option value="stage:prospecto">1. Prospecto IA</option>
-                  <option value="stage:interesado">2. Interesado</option>
-                  <option value="stage:cotizado">3. Cotización Enviada</option>
-                  <option value="stage:cita_agendada">4. Cita Agendada</option>
-                  <option value="stage:negociacion">5. En Negociación</option>
-                  <option value="stage:ganado">6. Venta Ganada</option>
-                  <option value="stage:perdido">7. Venta Perdida</option>
+                  <option value="stage:prospecto">Prospección</option>
+                  <option value="stage:interesado">Calificación</option>
+                  <option value="stage:cotizado">Propuesta / Cotizado</option>
+                  <option value="stage:cita_agendada">Demostración Agendada</option>
+                  <option value="stage:negociacion">Negociación</option>
+                  <option value="stage:ganado">Cierre Ganado</option>
+                  <option value="stage:perdido">Venta Perdida</option>
                 </select>
               </div>
 
