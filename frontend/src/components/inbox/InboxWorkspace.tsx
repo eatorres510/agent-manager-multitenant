@@ -1465,7 +1465,21 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
           </div>
 
           {/* Compact Horizontal Category Filter Tabs (Pill Strip) */}
-          <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', paddingBottom: '0.4rem', scrollbarWidth: 'none' }}>
+          <div 
+            className="custom-horizontal-scroll"
+            onWheel={(e) => {
+              if (e.deltaY !== 0) {
+                e.currentTarget.scrollLeft += e.deltaY;
+              }
+            }}
+            style={{ 
+              display: 'flex', 
+              gap: '0.35rem', 
+              overflowX: 'auto', 
+              paddingBottom: '0.45rem',
+              scrollBehavior: 'smooth'
+            }}
+          >
             {[
               { id: 'all', label: 'Todos', icon: 'inbox', count: conversations.length },
               { id: 'unanswered', label: 'Sin Respuesta', icon: 'schedule', count: conversations.filter(c => isUnanswered(c)).length, highlight: true },
