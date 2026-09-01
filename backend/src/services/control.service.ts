@@ -573,13 +573,34 @@ export class ControlService {
     }
   }
 
+  async resolvePrimaryId(tenantId: string, convId: string | number): Promise<number | null> {
+    if (!convId) return null;
+    try {
+      const config = await this.getTenantConfig(tenantId);
+      const target = parseInt(String(convId));
+      if (!isNaN(target)) {
+        const res = await configService.queryChatwootDb(
+          'SELECT id FROM conversations WHERE account_id = $1 AND (display_id = $2 OR id = $2) ORDER BY CASE WHEN display_id = $2 THEN 1 ELSE 2 END LIMIT 1',
+          [config.chatwoot_account_id, target]
+        );
+        if (res.rows.length > 0 && res.rows[0].id) {
+          return res.rows[0].id;
+        }
+      }
+    } catch (e: any) {
+      console.error('[Resolve Primary ID Error]', e.message);
+    }
+    return isNaN(parseInt(String(convId))) ? null : parseInt(String(convId));
+  }
+
   async getConversationMessagesDirectSql(tenantId: string, conversationId: string, beforeId?: string) {
     const config = await this.getTenantConfig(tenantId);
     const accountId = config.chatwoot_account_id;
-    const numericConvId = await this.resolveDisplayId(tenantId, conversationId);
+    const primaryId = await this.resolvePrimaryId(tenantId, conversationId);
+    if (!primaryId) return [];
 
     let beforeFilter = '';
-    const queryParams: any[] = [accountId, numericConvId];
+    const queryParams: any[] = [accountId, primaryId];
     if (beforeId && !isNaN(parseInt(beforeId))) {
       queryParams.push(parseInt(beforeId));
       beforeFilter = `AND m.id < $${queryParams.length}`;
@@ -616,7 +637,7 @@ export class ControlService {
           ) AS attachments
         FROM messages m
         LEFT JOIN users u ON m.sender_id = u.id AND m.sender_type = 'User'
-        LEFT JOIN attachments att ON att.message_id = m.id AND att.created_at >= m.created_at - INTERVAL '1 hour' AND att.created_at <= m.created_at + INTERVAL '1 hour'
+        LEFT JOIN attachments att ON att.message_id = m.id
         LEFT JOIN active_storage_attachments asa ON asa.record_id = att.id AND asa.record_type = 'Attachment'
         LEFT JOIN active_storage_blobs asb ON asa.blob_id = asb.id
         WHERE m.account_id = $1 AND m.conversation_id = $2 ${beforeFilter}
