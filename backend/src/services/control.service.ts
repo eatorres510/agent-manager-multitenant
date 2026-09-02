@@ -35,13 +35,15 @@ export class ControlService {
       throw new Error(`La configuración de Chatwoot no está completa para el tenant '${tenantId}'.`);
     }
 
+    const publicUrl = config.chatwoot_url.replace(/\/$/, '');
+
     // Reroute public domain to high-speed internal Docker network (0ms latency instead of 5000ms HTTPS timeout)
     const internalUrl = process.env.INTERNAL_CHATWOOT_URL || 'http://n8n_chatwoot:3000';
     if (config.chatwoot_url.includes('n8n-chatwoot.kwu5pq.easypanel.host')) {
-      return { ...config, chatwoot_url: internalUrl };
+      return { ...config, chatwoot_url: internalUrl, public_chatwoot_url: 'https://n8n-chatwoot.kwu5pq.easypanel.host' };
     }
 
-    return config;
+    return { ...config, public_chatwoot_url: publicUrl };
   }
 
   // --- LABELS MANAGEMENT ---
@@ -606,7 +608,7 @@ export class ControlService {
       beforeFilter = `AND m.id < $${queryParams.length}`;
     }
 
-    const baseUrl = config.chatwoot_url ? config.chatwoot_url.replace(/\/$/, '') : 'https://n8n-chatwoot.kwu5pq.easypanel.host';
+    const baseUrl = (config as any).public_chatwoot_url || 'https://n8n-chatwoot.kwu5pq.easypanel.host';
 
     const sql = `
       SELECT sub.* FROM (
@@ -699,25 +701,13 @@ export class ControlService {
     }
 
     const config = await this.getTenantConfig(tenantId);
-
-    // Punto 1: Ultra-Fast Direct SQL Query with Real-time Fallback to Chatwoot HTTP API
-    if (config.use_direct_sql_messages !== false) {
-      try {
-        const sqlMessages = await this.getConversationMessagesDirectSql(tenantId, conversationId, beforeId);
-        if (sqlMessages && sqlMessages.length > 0) {
-          return sqlMessages;
-        }
-      } catch (sqlErr: any) {
-        console.error(`[SQL Messages Fallback to HTTP - Tenant: ${tenantId}]`, sqlErr.message);
-      }
-    }
-
+    const publicBaseUrl = (config as any).public_chatwoot_url || 'https://n8n-chatwoot.kwu5pq.easypanel.host';
     const targetDisplayId = await this.resolveDisplayId(tenantId, conversationId);
     const baseUrl = `${config.chatwoot_url.replace(/\/$/, '')}/api/v1/accounts/${config.chatwoot_account_id}/conversations/${targetDisplayId}/messages`;
 
-    // Pagination Mode: If beforeId is provided, fetch 20 older messages prior to beforeId
-    if (beforeId) {
-      try {
+    // 1. Primary: Fetch via Chatwoot HTTP API (runs in Rails with full cryptographic signed URLs for all images/audios)
+    try {
+      if (beforeId) {
         const res = await axios.get(`${baseUrl}?before=${beforeId}`, {
           headers: { 'api_access_token': config.chatwoot_access_token },
           timeout: 4000
@@ -725,26 +715,21 @@ export class ControlService {
         const payload = res.data?.payload || res.data || [];
         let olderMessages: any[] = Array.isArray(payload) ? payload : [];
 
-        // Sanitize attachments
         for (const m of olderMessages) {
           if (m.attachments && Array.isArray(m.attachments)) {
-            m.attachments = m.attachments.filter((att: any) => {
-              const url = (att.data_url || att.thumb_url || att.external_url || '').toLowerCase();
-              const title = (att.fallback_title || '').toLowerCase();
-              return !(url.includes('salsas') || url.includes('listasalsas') || url.includes('alas%20buenas') || title.includes('salsa'));
+            m.attachments = m.attachments.map((att: any) => {
+              let dataUrl = att.data_url || '';
+              let thumbUrl = att.thumb_url || '';
+              if (dataUrl.includes('n8n_chatwoot:3000')) dataUrl = dataUrl.replace('http://n8n_chatwoot:3000', publicBaseUrl);
+              if (thumbUrl.includes('n8n_chatwoot:3000')) thumbUrl = thumbUrl.replace('http://n8n_chatwoot:3000', publicBaseUrl);
+              return { ...att, data_url: dataUrl, thumb_url: thumbUrl };
             });
           }
         }
         return olderMessages;
-      } catch (err: any) {
-        console.error('[Get Older Messages Error]', err.message);
-        return [];
       }
-    }
-    
-    // Initial Load Mode: Fetch pages 1 to 10 in parallel (up to 50 messages, <20ms latency)
-    try {
-      const pagePromises = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(p =>
+
+      const pagePromises = [1, 2, 3, 4, 5].map(p =>
         axios.get(`${baseUrl}?page=${p}`, {
           headers: { 'api_access_token': config.chatwoot_access_token },
           timeout: 4000
@@ -767,48 +752,45 @@ export class ControlService {
         }
       }
 
-      // NOTE: Historical conversation merging disabled — was causing messages from old conversations
-      // (e.g., images sent months ago) to appear mixed into current chats, confusing advisors.
-      // If re-enabling: add a visual separator between historical and current messages.
-      /*
-      try {
-        const { Client } = require('pg');
-        const db = new Client({ ... });
-        // ... historical merge logic disabled
-      } catch (err: any) { }
-      */
-
-      const getMsgTimestamp = (m: any) => {
-        const ts = m.created_at || m.timestamp;
-        if (!ts) return m.id || 0;
-        if (typeof ts === 'number') {
-          return ts < 10000000000 ? ts * 1000 : ts;
+      if (allMessages.length > 0) {
+        for (const m of allMessages) {
+          if (m.attachments && Array.isArray(m.attachments)) {
+            m.attachments = m.attachments.map((att: any) => {
+              let dataUrl = att.data_url || '';
+              let thumbUrl = att.thumb_url || '';
+              if (dataUrl.includes('n8n_chatwoot:3000')) dataUrl = dataUrl.replace('http://n8n_chatwoot:3000', publicBaseUrl);
+              if (thumbUrl.includes('n8n_chatwoot:3000')) thumbUrl = thumbUrl.replace('http://n8n_chatwoot:3000', publicBaseUrl);
+              return { ...att, data_url: dataUrl, thumb_url: thumbUrl };
+            });
+          }
         }
-        const parsed = new Date(ts).getTime();
-        return isNaN(parsed) ? m.id || 0 : parsed;
-      };
 
-      // Sanitize attachments: Filter out orphaned test attachments (e.g. salsa menus / test images from 2025)
-      for (const m of allMessages) {
-        if (m.attachments && Array.isArray(m.attachments)) {
-          m.attachments = m.attachments.filter((att: any) => {
-            const url = (att.data_url || att.thumb_url || att.external_url || '').toLowerCase();
-            const title = (att.fallback_title || '').toLowerCase();
-            if (url.includes('salsas') || url.includes('listasalsas') || url.includes('alas%20buenas') || title.includes('salsa')) {
-              return false;
-            }
-            return true;
-          });
-        }
+        const getMsgTimestamp = (m: any) => {
+          const ts = m.created_at || m.timestamp;
+          if (!ts) return m.id || 0;
+          if (typeof ts === 'number') return ts < 10000000000 ? ts * 1000 : ts;
+          const parsed = new Date(ts).getTime();
+          return isNaN(parsed) ? m.id || 0 : parsed;
+        };
+
+        allMessages.sort((a, b) => getMsgTimestamp(a) - getMsgTimestamp(b));
+        return allMessages;
       }
-
-      // Sort all messages chronologically (oldest at top -> newest at bottom)
-      allMessages.sort((a, b) => getMsgTimestamp(a) - getMsgTimestamp(b));
-      return allMessages;
-    } catch (err: any) {
-      console.error('[Get Messages Error]', err.message);
-      return [];
+    } catch (httpErr: any) {
+      console.error(`[Chatwoot API Messages Error - Tenant: ${tenantId}]`, httpErr.message);
     }
+
+    // 2. Fallback to direct SQL query if HTTP API returned nothing or errored
+    try {
+      const sqlMessages = await this.getConversationMessagesDirectSql(tenantId, conversationId, beforeId);
+      if (sqlMessages && sqlMessages.length > 0) {
+        return sqlMessages;
+      }
+    } catch (sqlErr: any) {
+      console.error(`[SQL Messages Fallback Error - Tenant: ${tenantId}]`, sqlErr.message);
+    }
+
+    return [];
   }
 
   async resolveDisplayId(tenantId: string, convId: string | number): Promise<string> {

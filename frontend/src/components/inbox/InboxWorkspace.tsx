@@ -3296,7 +3296,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         // 1-Click AI Auto-Extract Opportunity from Chat Context
                         const contactName = selectedConv.meta?.sender?.name || 'Cliente';
                         const contactPhone = selectedConv.meta?.sender?.phone_number || '';
-                        const currentAdvisor = userEmail ? userEmail.split('@')[0] : (selectedConv.meta?.assignee?.name || 'Sin Asignar');
+                        const currentAdvisor = selectedConv.meta?.assignee?.name || selectedConv.meta?.assignee?.email?.split('@')[0] || (userEmail ? userEmail.split('@')[0] : 'Sin Asignar');
 
                         const cachedMsgs = msgCacheRef.current[selectedConv.id.toString()] || selectedConv.messages || messages;
                         let extractedTitle = '';
@@ -3403,7 +3403,7 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                       onClick={() => {
                         const contactName = selectedConv.meta?.sender?.name || 'Cliente';
                         const contactPhone = selectedConv.meta?.sender?.phone_number || '';
-                        const currentAdvisor = userEmail ? userEmail.split('@')[0] : (selectedConv.meta?.assignee?.name || 'Sin Asignar');
+                        const currentAdvisor = selectedConv.meta?.assignee?.name || selectedConv.meta?.assignee?.email?.split('@')[0] || (userEmail ? userEmail.split('@')[0] : 'Sin Asignar');
 
                         const cachedMsgs = msgCacheRef.current[selectedConv.id.toString()] || selectedConv.messages || messages;
                         let extractedTitle = '';
