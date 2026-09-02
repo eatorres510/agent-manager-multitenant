@@ -2544,12 +2544,34 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
                               if (isImage) {
                                 return (
-                                  <div key={attIdx} style={{ marginTop: '0.25rem' }}>
+                                  <div key={attIdx} style={{ marginTop: '0.25rem', position: 'relative' }}>
                                     <img
                                       src={dataUrl}
-                                      alt="Adjunto"
-                                      style={{ maxWidth: '260px', maxHeight: '220px', borderRadius: '8px', objectFit: 'cover', cursor: 'pointer', border: '1px solid var(--border-subtle)' }}
+                                      alt="Foto adjunta"
+                                      loading="lazy"
+                                      style={{
+                                        maxWidth: '280px',
+                                        maxHeight: '240px',
+                                        borderRadius: '8px',
+                                        objectFit: 'cover',
+                                        cursor: 'pointer',
+                                        border: '1px solid var(--border-subtle)',
+                                        display: 'block',
+                                        backgroundColor: '#0b2b4c10'
+                                      }}
                                       onClick={() => window.open(dataUrl, '_blank')}
+                                      onError={(e) => {
+                                        const target = e.currentTarget;
+                                        target.style.display = 'none';
+                                        const fallback = document.createElement('a');
+                                        fallback.href = dataUrl;
+                                        fallback.target = '_blank';
+                                        fallback.textContent = '🖼️ Ver imagen adjunta';
+                                        fallback.style.fontSize = '0.78rem';
+                                        fallback.style.color = '#2563eb';
+                                        fallback.style.fontWeight = 'bold';
+                                        target.parentNode?.appendChild(fallback);
+                                      }}
                                     />
                                   </div>
                                 );
