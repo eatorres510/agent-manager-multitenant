@@ -22,6 +22,13 @@ export interface OpportunityData {
   company_contact_id?: number;
   credit_terms?: string;
   target_closing_date?: string;
+  meta_ad_id?: string;
+  meta_ad_headline?: string;
+  meta_campaign_name?: string;
+  invoiced_amount?: number;
+  invoice_number?: string;
+  sale_confirmed_at?: string;
+  sale_items_summary?: string;
 }
 
 interface OpportunityModalProps {
@@ -96,6 +103,14 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
   const [contactNameInput, setContactNameInput] = useState('');
   const [contactPhoneInput, setContactPhoneInput] = useState('');
 
+  // Meta Ads & Real Invoicing State
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoicedAmount, setInvoicedAmount] = useState<number | string>('');
+  const [saleItemsSummary, setSaleItemsSummary] = useState('');
+  const [metaAdId, setMetaAdId] = useState('');
+  const [metaAdHeadline, setMetaAdHeadline] = useState('');
+  const [metaCampaignName, setMetaCampaignName] = useState('');
+
   // Fetch Companies when in B2B mode
   useEffect(() => {
     if (token && isOpen) {
@@ -154,6 +169,14 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
 
       setContactNameInput(initialData.contact_name || defaultContactName || '');
       setContactPhoneInput(initialData.contact_phone || defaultContactPhone || '');
+
+      // Meta Ads & Invoicing
+      setInvoiceNumber(initialData.invoice_number || '');
+      setInvoicedAmount(initialData.invoiced_amount !== undefined && initialData.invoiced_amount !== null ? initialData.invoiced_amount : (initialData.value || ''));
+      setSaleItemsSummary(initialData.sale_items_summary || '');
+      setMetaAdId(initialData.meta_ad_id || '');
+      setMetaAdHeadline(initialData.meta_ad_headline || '');
+      setMetaCampaignName(initialData.meta_campaign_name || '');
     } else {
       const pType = defaultPipelineType || 'b2c';
       setPipelineType(pType);
@@ -174,6 +197,13 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
 
       setContactNameInput(defaultContactName || '');
       setContactPhoneInput(defaultContactPhone || '');
+
+      setInvoiceNumber('');
+      setInvoicedAmount('');
+      setSaleItemsSummary('');
+      setMetaAdId('');
+      setMetaAdHeadline('');
+      setMetaCampaignName('');
     }
   }, [initialData, isOpen, defaultPipelineType, defaultContactName, defaultContactPhone]);
 
@@ -261,7 +291,13 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
         company_name: pipelineType === 'b2b' ? finalCompanyName : undefined,
         company_contact_id: pipelineType === 'b2b' && selectedContactId ? Number(selectedContactId) : undefined,
         credit_terms: pipelineType === 'b2b' ? creditTerms : undefined,
-        target_closing_date: pipelineType === 'b2b' && targetClosingDate ? targetClosingDate : undefined
+        target_closing_date: pipelineType === 'b2b' && targetClosingDate ? targetClosingDate : undefined,
+        meta_ad_id: metaAdId || undefined,
+        meta_ad_headline: metaAdHeadline || undefined,
+        meta_campaign_name: metaCampaignName || undefined,
+        invoice_number: (stage === 'stage:ganado' || stage === 'stage:b2b_ganado') ? invoiceNumber.trim() || undefined : undefined,
+        invoiced_amount: (stage === 'stage:ganado' || stage === 'stage:b2b_ganado') ? (invoicedAmount !== '' ? Number(invoicedAmount) : (typeof value === 'number' ? value : parseFloat(value) || 0)) : undefined,
+        sale_items_summary: (stage === 'stage:ganado' || stage === 'stage:b2b_ganado') ? saleItemsSummary.trim() || undefined : undefined
       });
       onClose();
     } catch (err: any) {
@@ -649,6 +685,118 @@ export const OpportunityModal: React.FC<OpportunityModalProps> = ({
                 style={{ padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--status-danger-border)', backgroundColor: 'var(--surface-card)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
               />
             </div>
+          </div>
+        )}
+
+        {/* SECTION: VENTA GANADA / FACTURACIÓN REAL (IF APPLICABLE) */}
+        {(stage === 'stage:ganado' || stage === 'stage:b2b_ganado') && (
+          <div style={{
+            backgroundColor: 'rgba(5, 150, 105, 0.08)',
+            padding: '1rem',
+            borderRadius: '10px',
+            border: '1px solid rgba(5, 150, 105, 0.35)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.85rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', color: '#059669' }}>verified</span>
+                Confirmación de Venta & Facturación Real
+              </div>
+
+              {metaAdId && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  backgroundColor: 'rgba(0, 206, 255, 0.12)',
+                  color: '#00CEFF',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0, 206, 255, 0.35)'
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>ads_click</span>
+                  <span>Anuncio Meta: #{metaAdId}</span>
+                </div>
+              )}
+            </div>
+
+            {metaAdHeadline && (
+              <div style={{ fontSize: '0.75rem', color: '#94A3B8', backgroundColor: 'var(--surface-card)', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+                📢 <strong>Campaña/Anuncio de Origen:</strong> {metaAdHeadline}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669' }}>
+                  Número de Factura / Boleta <span style={{ color: 'var(--status-danger-solid)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Ej: FAC-001-002934"
+                  style={{
+                    padding: '0.55rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(5, 150, 105, 0.5)',
+                    backgroundColor: 'var(--surface-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    fontWeight: 700
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669' }}>
+                  Monto Real Facturado ($ USD) <span style={{ color: 'var(--status-danger-solid)' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={invoicedAmount}
+                  onChange={(e) => setInvoicedAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={{
+                    padding: '0.55rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(5, 150, 105, 0.5)',
+                    backgroundColor: 'var(--surface-card)',
+                    color: '#059669',
+                    fontSize: '0.88rem',
+                    fontWeight: 800
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669' }}>Detalle de Productos / Servicios Facturados</label>
+              <input
+                type="text"
+                value={saleItemsSummary}
+                onChange={(e) => setSaleItemsSummary(e.target.value)}
+                placeholder="Ej: 2x Transformadores Trifásicos 25kVA + Servicio de Instalación"
+                style={{
+                  padding: '0.55rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(5, 150, 105, 0.35)',
+                  backgroundColor: 'var(--surface-card)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem'
+                }}
+              />
+            </div>
+            <p style={{ fontSize: '0.7rem', color: '#64748B', margin: 0 }}>
+              💡 Este monto facturado se computará automáticamente en el informe de <strong>Retorno de Inversión (ROAS)</strong> y Atribución de Meta Ads.
+            </p>
           </div>
         )}
 

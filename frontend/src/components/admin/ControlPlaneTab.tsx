@@ -30,7 +30,7 @@ interface MetaTemplateItem {
 }
 
 export const ControlPlaneTab: React.FC<ControlPlaneTabProps> = ({ tenantId, token, role }) => {
-  const [activeSection, setActiveSection] = useState<'master-doc' | 'meta-guide' | 'labels' | 'channels' | 'templates'>('master-doc');
+  const [activeSection, setActiveSection] = useState<'master-doc' | 'meta-guide' | 'ctwa-ads' | 'labels' | 'channels' | 'templates'>('master-doc');
 
   // Meta credentials verifier state
   const [metaPhoneNumberId, setMetaPhoneNumberId] = useState('');
@@ -387,6 +387,22 @@ export const ControlPlaneTab: React.FC<ControlPlaneTabProps> = ({ tenantId, toke
           }}
         >
           🚀 Validador & Aprovisionamiento Meta
+        </button>
+        <button
+          onClick={() => setActiveSection('ctwa-ads')}
+          style={{
+            padding: '0.55rem 1rem',
+            borderRadius: '8px',
+            border: '1px solid',
+            borderColor: activeSection === 'ctwa-ads' ? '#00CEFF' : '#e5e7eb',
+            backgroundColor: activeSection === 'ctwa-ads' ? 'rgba(0, 206, 255, 0.12)' : '#ffffff',
+            color: activeSection === 'ctwa-ads' ? '#0891b2' : '#64748b',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            fontWeight: 'bold'
+          }}
+        >
+          🎯 Integración Meta Ads & CTWA (Guía Oficial)
         </button>
         <button
           onClick={() => setActiveSection('labels')}
@@ -919,6 +935,209 @@ export const ControlPlaneTab: React.FC<ControlPlaneTabProps> = ({ tenantId, toke
                 <li><b>Error "Unsupported post request" o permisos insuficientes</b>: Revisa que el usuario del sistema tenga asignados tanto la App como la Cuenta de WhatsApp Business.</li>
                 <li><b>El número no aparece en API Setup</b>: Revisa en <i>Meta Business Suite → WhatsApp Manager</i> que el número esté verificado.</li>
               </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      
+      {/* SECTION CTWA: CLICK-TO-WHATSAPP (CTWA) & META ADS INTEGRATION GUIDE */}
+      {activeSection === 'ctwa-ads' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
+          
+          {/* Header Banner */}
+          <div style={{
+            padding: '1.25rem 1.5rem',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, rgba(0, 206, 255, 0.12) 0%, rgba(37, 99, 235, 0.12) 100%)',
+            border: '1px solid rgba(0, 206, 255, 0.35)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.45rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '1.6rem', color: '#00CEFF' }}>ads_click</span>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+                Guía Oficial: Integración Click-to-WhatsApp (CTWA), Atribución Publicitaria & Facturación Real
+              </h3>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Aprende cómo conectar tus campañas publicitarias de Meta (Facebook & Instagram) para que cada mensaje entrante capture el anuncio exacto, el titular y la imagen vista por el usuario, y cómo asociar las ventas cerradas con factura al gasto publicitario para medir el <strong>Retorno Real de Inversión (ROAS)</strong>.
+            </p>
+          </div>
+
+          {/* Architecture & Flow Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '1rem'
+          }}>
+            {/* Step 1 */}
+            <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '1.15rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 800, color: '#38bdf8', fontSize: '0.86rem' }}>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: '#0284c7', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
+                <span>Anuncio en Meta Ads</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                El prospecto visualiza un anuncio en Instagram o Facebook y presiona el botón <strong>"Enviar mensaje a WhatsApp"</strong>. Meta inyecta los metadatos del anuncio en el mensaje.
+              </p>
+            </div>
+
+            {/* Step 2 */}
+            <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '1.15rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 800, color: '#00CEFF', fontSize: '0.86rem' }}>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: '#00CEFF', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
+                <span>Captura en Frankie Core</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                WhatsApp Cloud API envía el objeto <code>referral</code> con <code>source_id</code> (ID del Anuncio), <code>headline</code>, <code>body</code> e <code>image_url</code>. La plataforma lo vincula al CRM.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '1.15rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 800, color: '#10b981', fontSize: '0.86rem' }}>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: '#059669', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>3</span>
+                <span>Atención Contextual</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                El asesor y la IA reciben en la bandeja de chat la tarjeta visual del anuncio, sabiendo de antemano el interés exacto del cliente sin preguntarle "¿qué anuncio vio?".
+              </p>
+            </div>
+
+            {/* Step 4 */}
+            <div style={{ backgroundColor: 'var(--surface-subtle)', padding: '1.15rem', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 800, color: '#f59e0b', fontSize: '0.86rem' }}>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: '#d97706', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>4</span>
+                <span>Cierre Facturado & ROAS</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Al concretar la venta en el Kanban CRM, se registra el <strong>N° de Factura</strong> y el <strong>Monto Facturado</strong>. El sistema contrasta el gasto de Meta vs lo realmente facturado.
+              </p>
+            </div>
+          </div>
+
+          {/* Technical Deep Dive: Meta Webhook Payload */}
+          <div style={{
+            backgroundColor: 'var(--surface-card)',
+            padding: '1.25rem',
+            borderRadius: '10px',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem'
+          }}>
+            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: '#00CEFF' }}>code</span>
+              ¿Qué envía la API de Meta Cloud cuando llega un mensaje de Anuncio?
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Cuando un cliente hace clic en un anuncio de Meta y escribe por primera vez, el webhook de WhatsApp Cloud API envía dentro del arreglo <code>messages[]</code> un objeto especial llamado <code>referral</code>. Chatwoot por defecto ignoraba este objeto, pero Frankie Core lo rescata y lo propaga a toda la plataforma:
+            </p>
+
+            <pre style={{
+              backgroundColor: '#090d16',
+              padding: '1rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#38bdf8',
+              fontSize: '0.75rem',
+              overflowX: 'auto',
+              margin: 0,
+              fontFamily: 'Consolas, Monaco, monospace'
+            }}>
+{`{
+  "from": "50588889999",
+  "id": "wamid.HBgNNTA1ODg4...",
+  "timestamp": "1725400000",
+  "text": { "body": "Hola, vi esto en Facebook y quiero más información" },
+  "type": "text",
+  "referral": {
+    "source_type": "ad",                     // 'ad' para pauta paga o 'post' para orgánico
+    "source_id": "120208493029102",          // ID único del anuncio en Meta Ads Manager
+    "source_url": "https://fb.me/120208...",  // Enlace directo al anuncio en Facebook/Instagram
+    "headline": "Transformador Trifásico 25kVA - Stock Inmediato", // Titular del anuncio
+    "body": "Aprovecha precio de distribuidor directo con garantía de 2 años.",
+    "media_type": "image",                   // 'image' o 'video'
+    "image_url": "https://scontent.xx.fbcdn.net/v/t39.35426...",  // Imagen del anuncio
+    "ctwa_clid": "ARBx9Y3zQW8K..."           // Identificador criptográfico de atribución de clic
+  }
+}`}
+            </pre>
+          </div>
+
+          {/* STEP BY STEP SETUP IN META ADS MANAGER */}
+          <div style={{
+            backgroundColor: 'var(--surface-card)',
+            padding: '1.25rem',
+            borderRadius: '10px',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem'
+          }}>
+            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '1.2rem', color: '#10b981' }}>checklist</span>
+              Guía de Configuración en Meta Ads Manager (Qué hacer del otro lado)
+            </h4>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {/* Step A */}
+              <div style={{ padding: '0.85rem 1rem', backgroundColor: 'var(--surface-subtle)', borderRadius: '8px', borderLeft: '3px solid #2563eb' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#2563eb' }}>Paso 1: Vincular el número de WhatsApp a Meta Business Suite</strong>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Ingresa a <a href="https://business.facebook.com" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>business.facebook.com</a> → <em>Configuración del Negocio → Cuentas → Cuentas de WhatsApp</em>. Asegúrate de que el número que recibe los mensajes sea la misma línea oficial configurada en Frankie Core.
+                </p>
+              </div>
+
+              {/* Step B */}
+              <div style={{ padding: '0.85rem 1rem', backgroundColor: 'var(--surface-subtle)', borderRadius: '8px', borderLeft: '3px solid #00CEFF' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#00CEFF' }}>Paso 2: Crear la Campaña de Click-to-WhatsApp en Ads Manager</strong>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  En el Administrador de Anuncios de Meta:
+                </p>
+                <ul style={{ margin: '0.35rem 0 0 0', paddingLeft: '1.2rem', fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <li><strong>Objetivo:</strong> Selecciona <em>Interacción</em> o <em>Clientes potenciales (Leads)</em>.</li>
+                  <li><strong>Ubicación de Conversión:</strong> Selecciona <em>Apps de mensajería</em>.</li>
+                  <li><strong>App de destino:</strong> Marca únicamente <em>WhatsApp</em> y selecciona tu página y número verificado.</li>
+                  <li><strong>Plantilla de inicio:</strong> Diseña el texto sugerido que verá el cliente (ej: "Hola, me interesa la cotización de [Producto]").</li>
+                </ul>
+              </div>
+
+              {/* Step C */}
+              <div style={{ padding: '0.85rem 1rem', backgroundColor: 'var(--surface-subtle)', borderRadius: '8px', borderLeft: '3px solid #10b981' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#10b981' }}>Paso 3: Obtener tu ID de Cuenta Publicitaria (Ad Account ID)</strong>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  En la URL o menú desplegable de Meta Ads Manager, copia tu identificador de cuenta con el formato <code>act_123456789012345</code>. Luego ve al menú lateral de Frankie Core: <strong>Informes & Analítica → Meta Ads vs Facturado (ROI) → Configuración de Cuenta Meta</strong> y guárdalo.
+                </p>
+              </div>
+
+              {/* Step D */}
+              <div style={{ padding: '0.85rem 1rem', backgroundColor: 'var(--surface-subtle)', borderRadius: '8px', borderLeft: '3px solid #7c3aed' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#7c3aed' }}>Paso 4: Token de Sistema para Sincronización Automática (Opcional pero recomendado)</strong>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Para que Frankie Core descargue el gasto, impresiones y clics directamente de los servidores de Meta sin que tengas que ingresarlos manualmente:
+                </p>
+                <ul style={{ margin: '0.35rem 0 0 0', paddingLeft: '1.2rem', fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <li>En <em>Configuración del Negocio → Usuarios del Sistema</em>, crea un usuario con rol de <strong>Administrador</strong>.</li>
+                  <li>Asígnale activo: Tu <em>Cuenta Publicitaria</em> con control total.</li>
+                  <li>Genera un token permanente con los permisos: <code>ads_read</code>, <code>ads_management</code> y <code>read_insights</code>.</li>
+                  <li>Pega el token en el panel de configuración de Frankie Core.</li>
+                </ul>
+              </div>
+
+              {/* Step E */}
+              <div style={{ padding: '0.85rem 1rem', backgroundColor: 'var(--surface-subtle)', borderRadius: '8px', borderLeft: '3px solid #f59e0b' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#f59e0b' }}>Paso 5: Confirmación de Venta con Factura en el Pipeline CRM</strong>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  Para que una venta compute en el <strong>"Real Facturado"</strong> y no solo en estimaciones:
+                </p>
+                <ul style={{ margin: '0.35rem 0 0 0', paddingLeft: '1.2rem', fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <li>En el <strong>Pipeline CRM (Kanban)</strong>, arrastra la oportunidad comercial a <strong>"Cierre Ganado"</strong>.</li>
+                  <li>El sistema abrirá automáticamente la ventana de confirmación pidiendo el <strong>N° de Factura / Boleta</strong> y el <strong>Monto Real Facturado ($ USD)</strong>.</li>
+                  <li>¡Listo! El cálculo de ROAS por campaña, CPA y Tasa de Cierre se actualizará en tiempo real en la pestaña de <strong>Meta Ads vs Facturado (ROI)</strong>.</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>

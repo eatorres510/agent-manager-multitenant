@@ -351,6 +351,38 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
         const kb = await configService.getKnowledgeBase(tenantId);
         const hours = isWithinWorkingHours(kb);
 
+        // Check for Meta Referral (Click-to-WhatsApp Ads)
+        const referral = payload.content_attributes?.referral || payload.conversation?.additional_attributes?.referral;
+        if (referral && (referral.source_id || referral.headline)) {
+          const sourceId = (referral.source_id || 'meta_unknown').toString();
+          const headline = referral.headline || 'Anuncio Meta';
+          const body = referral.body || '';
+          const sourceUrl = referral.source_url || '';
+          const imageUrl = referral.image_url || referral.thumbnail_url || '';
+          const videoUrl = referral.video_url || '';
+          const ctwaClid = referral.ctwa_clid || '';
+          const mediaType = referral.media_type || (imageUrl ? 'image' : videoUrl ? 'video' : 'text');
+          const senderPhone = payload.sender?.phone_number || payload.conversation?.meta?.sender?.phone_number || '';
+          const senderName = payload.sender?.name || payload.conversation?.meta?.sender?.name || '';
+
+          configService.query(`
+            INSERT INTO meta_ad_referrals 
+              (tenant_id, conversation_id, contact_phone, contact_name, source_id, source_type, source_url, headline, body, media_type, image_url, video_url, ctwa_clid)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT DO NOTHING;
+          `, [
+            tenantId, conversationId.toString(), senderPhone, senderName, sourceId,
+            referral.source_type || 'ad', sourceUrl, headline, body, mediaType, imageUrl, videoUrl, ctwaClid
+          ]).catch(e => console.error('[Meta Referral Insert Error]', e.message));
+
+          // Also automatically update any existing opportunity for this conversation
+          configService.query(`
+            UPDATE crm_opportunities
+            SET meta_ad_id = $1, meta_ad_headline = $2
+            WHERE tenant_id = $3 AND conversation_id = $4 AND meta_ad_id IS NULL;
+          `, [sourceId, headline, tenantId, conversationId.toString()]).catch(e => console.error('[CRM Opportunity Meta Link Error]', e.message));
+        }
+
         // ALWAYS broadcast SSE event for all incoming messages so frontend UI updates in real-time!
         const incomingMsgObj = {
           id: payload.id || Date.now(),
@@ -360,7 +392,8 @@ app.post('/api/webhook/:tenantId?', async (req, res) => {
           created_at: payload.created_at || Math.floor(Date.now() / 1000),
           conversation_id: conversationId,
           display_id: payload.conversation?.display_id || conversationId,
-          sender: payload.sender || payload.conversation?.meta?.sender || { name: 'Cliente' }
+          sender: payload.sender || payload.conversation?.meta?.sender || { name: 'Cliente' },
+          content_attributes: payload.content_attributes || (referral ? { referral } : undefined)
         };
         controlService.broadcastSseEvent(tenantId, 'message_created', {
           conversation_id: conversationId,
@@ -1880,6 +1913,63 @@ app.delete('/api/control/:tenantId/opportunities/:id', authenticateToken, async 
     const { tenantId, id } = req.params;
     await controlService.deleteOpportunity(tenantId, parseInt(id));
     res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// -------------------------------------------------------------
+// META ADS CLICK-TO-WHATSAPP ATTRIBUTION & CONFIRM SALE APIS
+// -------------------------------------------------------------
+app.get('/api/control/:tenantId/meta-attribution', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.params;
+    const data = await controlService.getMetaAttribution(tenantId);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/meta-attribution/save-spend', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId } = req.params;
+    const { ad_id, manual_spend, spend, impressions, clicks, ad_name, campaign_name, adset_name } = req.body;
+    if (!ad_id) return res.status(400).json({ error: 'ad_id es requerido.' });
+    const finalSpend = parseFloat(manual_spend !== undefined ? manual_spend : (spend !== undefined ? spend : 0));
+    const saved = await controlService.saveMetaAdSpend(tenantId, ad_id, {
+      manual_spend: finalSpend,
+      spend: finalSpend,
+      impressions: parseInt(impressions || 0),
+      clicks: parseInt(clicks || 0),
+      ad_name,
+      campaign_name,
+      adset_name
+    });
+    res.json({ success: true, data: saved });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/control/:tenantId/opportunities/:id/confirm-sale', authenticateToken, async (req: AuthRequest, res) => {
+  if (req.user?.role === 'readonly') {
+    return res.status(403).json({ error: 'Permisos de sólo lectura.' });
+  }
+  try {
+    const { tenantId, id } = req.params;
+    const { invoiced_amount, invoice_number, sale_items_summary, stage } = req.body;
+    const opp = await controlService.updateOpportunity(tenantId, parseInt(id), {
+      invoiced_amount: parseFloat(invoiced_amount || 0),
+      invoice_number: invoice_number || '',
+      sale_items_summary: sale_items_summary || '',
+      stage: stage || 'stage:ganado'
+    });
+    controlService.broadcastSseEvent(tenantId, 'opportunity_updated', opp);
+    res.json({ success: true, opportunity: opp });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

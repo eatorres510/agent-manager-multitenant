@@ -1567,7 +1567,13 @@ export class ControlService {
       company_name,
       company_contact_id,
       credit_terms,
-      target_closing_date
+      target_closing_date,
+      meta_ad_id,
+      meta_ad_headline,
+      meta_campaign_name,
+      invoiced_amount,
+      invoice_number,
+      sale_items_summary
     } = payload;
 
     const res = await configService.query(`
@@ -1575,14 +1581,16 @@ export class ControlService {
         tenant_id, contact_id, contact_name, contact_phone, conversation_id,
         title, value, currency, stage, probability, assigned_agent_name,
         next_action_type, next_action_date, next_action_notes,
-        pipeline_type, company_id, company_name, company_contact_id, credit_terms, target_closing_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        pipeline_type, company_id, company_name, company_contact_id, credit_terms, target_closing_date,
+        meta_ad_id, meta_ad_headline, meta_campaign_name, invoiced_amount, invoice_number, sale_items_summary
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
       RETURNING *
     `, [
       tenantId, contact_id || 'general', contact_name || 'Cliente', contact_phone || '', conversation_id || null,
       title || 'Nueva Oportunidad Comercial', value || 0.00, currency, stage, probability, assigned_agent_name || 'Vendedor',
       next_action_type || null, next_action_date || null, next_action_notes || null,
-      pipeline_type || 'b2c', company_id || null, company_name || null, company_contact_id || null, credit_terms || null, target_closing_date || null
+      pipeline_type || 'b2c', company_id || null, company_name || null, company_contact_id || null, credit_terms || null, target_closing_date || null,
+      meta_ad_id || null, meta_ad_headline || null, meta_campaign_name || null, invoiced_amount || 0, invoice_number || null, sale_items_summary || null
     ]);
 
     return res.rows[0];
@@ -1597,7 +1605,9 @@ export class ControlService {
       'assigned_agent_name', 'lost_reason', 'lost_notes',
       'next_action_type', 'next_action_date', 'next_action_notes',
       'pipeline_type', 'company_id', 'company_name', 'company_contact_id',
-      'credit_terms', 'target_closing_date'
+      'credit_terms', 'target_closing_date',
+      'meta_ad_id', 'meta_ad_headline', 'meta_campaign_name',
+      'invoiced_amount', 'invoice_number', 'sale_items_summary'
     ];
 
     allowed.forEach(key => {
@@ -1607,11 +1617,191 @@ export class ControlService {
       }
     });
 
+    // Auto-timestamp sale confirmation when moving to closed won
+    if (payload.stage === 'stage:ganado' || payload.stage === 'stage:b2b_ganado') {
+      fields.push(`sale_confirmed_at = CURRENT_TIMESTAMP`);
+      if (payload.invoiced_amount === undefined && payload.value !== undefined) {
+        params.push(payload.value);
+        fields.push(`invoiced_amount = $${params.length}`);
+      }
+    }
+
     if (fields.length === 0) return null;
 
     fields.push(`updated_at = CURRENT_TIMESTAMP`);
     const queryText = `UPDATE crm_opportunities SET ${fields.join(', ')} WHERE id = $1 AND tenant_id = $2 RETURNING *`;
     const res = await configService.query(queryText, params);
+    return res.rows[0];
+  }
+
+  // --- META ADS CLICK-TO-WHATSAPP ATTRIBUTION & ROI ---
+  async getMetaAttribution(tenantId: string) {
+    // 1. Fetch all referrals and their associated opportunities
+    const referralsQuery = `
+      SELECT r.*, o.id as opportunity_id, o.stage, o.value as opp_value, o.invoiced_amount, o.invoice_number, 
+             o.assigned_agent_name, o.sale_confirmed_at, o.title as opp_title, o.sale_items_summary
+      FROM meta_ad_referrals r
+      LEFT JOIN crm_opportunities o ON o.conversation_id = r.conversation_id AND o.tenant_id = r.tenant_id
+      WHERE r.tenant_id = $1
+      ORDER BY r.created_at DESC;
+    `;
+    const referralsRes = await configService.query(referralsQuery, [tenantId]);
+    const allReferrals = referralsRes.rows;
+
+    // 2. Fetch all Meta Ad Insights
+    const insightsRes = await configService.query(`
+      SELECT * FROM meta_ad_insights WHERE tenant_id = $1;
+    `, [tenantId]);
+    const insightsMap: Record<string, any> = {};
+    insightsRes.rows.forEach((ins: any) => {
+      insightsMap[ins.ad_id] = ins;
+    });
+
+    // 3. Group by source_id (Ad ID)
+    const adsMap: Record<string, any> = {};
+    allReferrals.forEach((row: any) => {
+      const adId = row.source_id;
+      if (!adsMap[adId]) {
+        const ins = insightsMap[adId] || {};
+        adsMap[adId] = {
+          ad_id: adId,
+          headline: row.headline || ins.ad_name || `Anuncio Meta #${adId}`,
+          body: row.body || '',
+          image_url: row.image_url || null,
+          source_url: row.source_url || '',
+          campaign_name: ins.campaign_name || row.headline || 'Campaña WhatsApp Meta',
+          adset_name: ins.adset_name || 'Conjunto de Anuncios',
+          spend: parseFloat(ins.manual_spend ?? ins.spend ?? 0),
+          impressions: ins.impressions || 0,
+          clicks: ins.clicks || 0,
+          cpc: parseFloat(ins.cpc || 0),
+          leads: [],
+          confirmed_sales: [],
+          total_invoiced: 0,
+          total_leads: 0,
+          total_won: 0
+        };
+      }
+
+      adsMap[adId].total_leads++;
+      adsMap[adId].leads.push({
+        conversation_id: row.conversation_id,
+        contact_name: row.contact_name || 'Cliente WhatsApp',
+        contact_phone: row.contact_phone || '',
+        created_at: row.created_at,
+        stage: row.stage || 'prospecto',
+        agent: row.assigned_agent_name || 'Sin Asignar'
+      });
+
+      if (row.stage === 'stage:ganado' || row.stage === 'stage:b2b_ganado') {
+        adsMap[adId].total_won++;
+        const invAmt = parseFloat(row.invoiced_amount || row.opp_value || 0);
+        adsMap[adId].total_invoiced += invAmt;
+        adsMap[adId].confirmed_sales.push({
+          opportunity_id: row.opportunity_id,
+          conversation_id: row.conversation_id,
+          contact_name: row.contact_name || 'Cliente WhatsApp',
+          contact_phone: row.contact_phone || '',
+          title: row.opp_title,
+          invoice_number: row.invoice_number || 'N/A',
+          invoiced_amount: invAmt,
+          agent: row.assigned_agent_name || 'Asesor',
+          sale_confirmed_at: row.sale_confirmed_at || row.created_at,
+          items: row.sale_items_summary || ''
+        });
+      }
+    });
+
+    const adsList = Object.values(adsMap).map((ad: any) => {
+      const roas = ad.spend > 0 ? parseFloat((ad.total_invoiced / ad.spend).toFixed(2)) : (ad.total_invoiced > 0 ? 99.9 : 0);
+      const closeRate = ad.total_leads > 0 ? parseFloat(((ad.total_won / ad.total_leads) * 100).toFixed(1)) : 0;
+      const cpa = ad.total_won > 0 ? parseFloat((ad.spend / ad.total_won).toFixed(2)) : ad.spend;
+      return {
+        ...ad,
+        roas,
+        close_rate: closeRate,
+        cpa
+      };
+    });
+
+    // Compute Global Summary
+    const totalSpend = adsList.reduce((acc, a) => acc + a.spend, 0);
+    const totalInvoiced = adsList.reduce((acc, a) => acc + a.total_invoiced, 0);
+    const totalLeads = adsList.reduce((acc, a) => acc + a.total_leads, 0);
+    const totalWon = adsList.reduce((acc, a) => acc + a.total_won, 0);
+    const globalRoas = totalSpend > 0 ? parseFloat((totalInvoiced / totalSpend).toFixed(2)) : (totalInvoiced > 0 ? 99.9 : 0);
+    const globalCloseRate = totalLeads > 0 ? parseFloat(((totalWon / totalLeads) * 100).toFixed(1)) : 0;
+    const globalCpa = totalWon > 0 ? parseFloat((totalSpend / (totalWon > 0 ? totalWon : 1)).toFixed(2)) : 0;
+
+    // Top-level sales list from opportunities with meta_ad_id or from referrals
+    const salesRes = await configService.query(`
+      SELECT id, title, contact_name, contact_phone, invoiced_amount, invoice_number,
+             sale_confirmed_at, sale_items_summary, meta_ad_id, meta_ad_headline, conversation_id
+      FROM crm_opportunities
+      WHERE tenant_id = $1 AND (stage = 'stage:ganado' OR stage = 'stage:b2b_ganado')
+      ORDER BY sale_confirmed_at DESC NULLS LAST, updated_at DESC;
+    `, [tenantId]);
+
+    // Top-level config
+    const configRes = await configService.query(`
+      SELECT meta_ad_account_id, CASE WHEN meta_marketing_token IS NOT NULL AND meta_marketing_token != '' THEN true ELSE false END as has_marketing_token
+      FROM tenant_configs
+      WHERE tenant_id = $1;
+    `, [tenantId]);
+
+    return {
+      summary: {
+        total_spend: totalSpend,
+        total_invoiced: totalInvoiced,
+        total_leads: totalLeads,
+        total_sales: totalWon,
+        total_won: totalWon,
+        roas: globalRoas,
+        global_roas: globalRoas,
+        conversion_rate: globalCloseRate,
+        global_close_rate: globalCloseRate,
+        cpa: globalCpa,
+        global_cpa: globalCpa
+      },
+      ads: adsList.map((a: any) => ({
+        meta_ad_id: a.ad_id,
+        meta_ad_headline: a.headline,
+        meta_campaign_name: a.campaign_name,
+        meta_ad_image_url: a.image_url,
+        leads_count: a.total_leads,
+        sales_count: a.total_won,
+        invoiced_amount: a.total_invoiced,
+        spend: a.spend,
+        impressions: a.impressions,
+        clicks: a.clicks,
+        roas: a.roas,
+        cpa: a.cpa,
+        conversion_rate: a.close_rate
+      })),
+      sales: salesRes.rows,
+      referrals: allReferrals,
+      config: configRes.rows[0] || {}
+    };
+  }
+
+  async saveMetaAdSpend(tenantId: string, adId: string, payload: { manual_spend?: number; spend?: number; impressions?: number; clicks?: number; ad_name?: string; campaign_name?: string; adset_name?: string }) {
+    const manual_spend = payload.manual_spend !== undefined ? payload.manual_spend : (payload.spend || 0);
+    const impressions = payload.impressions || 0;
+    const clicks = payload.clicks || 0;
+    const { ad_name, campaign_name, adset_name } = payload;
+    const res = await configService.query(`
+      INSERT INTO meta_ad_insights (tenant_id, ad_id, manual_spend, spend, impressions, clicks, ad_name, campaign_name, adset_name, synced_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+      ON CONFLICT (tenant_id, ad_id) DO UPDATE
+      SET manual_spend = EXCLUDED.manual_spend,
+          spend = EXCLUDED.spend,
+          impressions = EXCLUDED.impressions,
+          clicks = EXCLUDED.clicks,
+          ad_name = COALESCE(EXCLUDED.ad_name, meta_ad_insights.ad_name),
+          campaign_name = COALESCE(EXCLUDED.campaign_name, meta_ad_insights.campaign_name),
+          synced_at = CURRENT_TIMESTAMP
+      RETURNING *;
+    `, [tenantId, adId, manual_spend, manual_spend, impressions, clicks, ad_name || null, campaign_name || null, adset_name || null]);
     return res.rows[0];
   }
 

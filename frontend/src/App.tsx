@@ -8,6 +8,7 @@ import { OnboardingWizard } from './components/admin/OnboardingWizard';
 import { ContactsDirectoryTab } from './components/crm/ContactsDirectoryTab';
 import { AdvisorHomeTab } from './components/home/AdvisorHomeTab';
 import { CompaniesDirectoryTab } from './components/crm/CompaniesDirectoryTab';
+import { MetaAdsAttributionTab } from './components/reports/MetaAdsAttributionTab';
 
 interface AgentConfig {
   tenant_id: string;
@@ -75,7 +76,7 @@ interface ToastMessage {
   type: 'success' | 'error';
 }
 
-type TabType = 'home' | 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs' | 'control-plane' | 'inbox' | 'contacts' | 'kanban' | 'teams' | 'companies';
+type TabType = 'home' | 'settings' | 'knowledge' | 'products' | 'admin' | 'chats' | 'analytics' | 'activity' | 'webhook' | 'users' | 'appointments' | 'lost-sales' | 'api-docs' | 'control-plane' | 'inbox' | 'contacts' | 'kanban' | 'teams' | 'companies' | 'meta-roi';
 
 function App() {
   // Auth state
@@ -2007,6 +2008,7 @@ function App() {
           {(!collapsedGroups.reports || isSidebarCollapsed) && (
             <>
               {renderNavItem('analytics', 'analytics', 'Reportes e Informes BI', undefined, undefined, fetchAnalytics)}
+              {renderNavItem('meta-roi', 'ads_click', 'Meta Ads vs Facturado (ROI)')}
               {renderNavItem('lost-sales', 'shopping_cart_checkout', 'Ventas Perdidas', undefined, undefined, fetchLostSales)}
               {renderNavItem('chats', 'visibility', 'Auditoría de Chats', undefined, undefined, fetchConversations)}
               {renderNavItem('activity', 'vital_signs', 'Bitácora en Vivo', undefined, undefined, fetchLogs)}
@@ -3769,6 +3771,15 @@ function App() {
 
           {activeTab === 'control-plane' && (
             <ControlPlaneTab tenantId={tenantId || 'demo'} token={token} role={role} />
+          )}
+
+          {activeTab === 'meta-roi' && (
+            <MetaAdsAttributionTab
+              tenantId={tenantId || 'demo'}
+              token={token}
+              role={role}
+              onOpenChat={() => setActiveTab('inbox')}
+            />
           )}
 
           {activeTab === 'inbox' && (

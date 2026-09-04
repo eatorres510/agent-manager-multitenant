@@ -40,6 +40,13 @@ export interface Opportunity {
   company_contact_email?: string;
   credit_terms?: string;
   target_closing_date?: string;
+  meta_ad_id?: string;
+  meta_ad_headline?: string;
+  meta_campaign_name?: string;
+  invoiced_amount?: number;
+  invoice_number?: string;
+  sale_confirmed_at?: string;
+  sale_items_summary?: string;
   created_at: string;
   updated_at: string;
 }
@@ -137,6 +144,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
     }
 
     if (targetStage === 'stage:perdido' || targetStage === 'stage:b2b_perdido') {
+      setEditingOpp({ ...opp, stage: targetStage });
+      setShowOppModal(true);
+    } else if (targetStage === 'stage:ganado' || targetStage === 'stage:b2b_ganado') {
       setEditingOpp({ ...opp, stage: targetStage });
       setShowOppModal(true);
     } else {
@@ -612,8 +622,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
                           </strong>
                         </div>
 
-                        {/* Amount Tag */}
-                        <div>
+                        {/* Amount Tag & Badges */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.35rem' }}>
                           <span className="tabular-nums" style={{
                             fontSize: '0.72rem',
                             fontWeight: 800,
@@ -624,8 +634,50 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tenantId, token, role,
                             borderRadius: '5px',
                             display: 'inline-block'
                           }}>
-                            ${Number(opp.value).toLocaleString('en-US', { minimumFractionDigits: 0 })} {opp.currency}
+                            ${Number(opp.invoiced_amount && isWon ? opp.invoiced_amount : opp.value).toLocaleString('en-US', { minimumFractionDigits: 0 })} {opp.currency}
                           </span>
+
+                          {opp.meta_ad_id && (
+                            <span
+                              title={opp.meta_ad_headline ? `Anuncio: ${opp.meta_ad_headline}` : `Meta Ad ID: ${opp.meta_ad_id}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.2rem',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                color: '#00CEFF',
+                                backgroundColor: 'rgba(0, 206, 255, 0.1)',
+                                border: '1px solid rgba(0, 206, 255, 0.3)',
+                                padding: '0.08rem 0.35rem',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>ads_click</span>
+                              <span>Meta #{opp.meta_ad_id.slice(-6)}</span>
+                            </span>
+                          )}
+
+                          {opp.invoice_number && isWon && (
+                            <span
+                              title={`Factura: ${opp.invoice_number}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.2rem',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                color: '#059669',
+                                backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                                border: '1px solid rgba(5, 150, 105, 0.3)',
+                                padding: '0.08rem 0.35rem',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: '0.75rem' }}>receipt_long</span>
+                              <span>Fac #{opp.invoice_number}</span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Contact Person Details */}

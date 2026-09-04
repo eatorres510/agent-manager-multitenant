@@ -312,6 +312,58 @@ class ConfigService {
         ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS target_closing_date DATE;
       `);
 
+      // 14. Meta Ads Click-to-WhatsApp Referrals & Campaign Attribution
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS meta_ad_referrals (
+          id SERIAL PRIMARY KEY,
+          tenant_id VARCHAR(50) REFERENCES tenants(id) ON DELETE CASCADE,
+          conversation_id VARCHAR(100) NOT NULL,
+          contact_phone VARCHAR(50),
+          contact_name VARCHAR(150),
+          source_id VARCHAR(100) NOT NULL,
+          source_type VARCHAR(50) DEFAULT 'ad',
+          source_url TEXT,
+          headline TEXT,
+          body TEXT,
+          media_type VARCHAR(20) DEFAULT 'image',
+          image_url TEXT,
+          video_url TEXT,
+          ctwa_clid TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_meta_ref_source_id ON meta_ad_referrals(source_id);
+        CREATE INDEX IF NOT EXISTS idx_meta_ref_conv_id ON meta_ad_referrals(tenant_id, conversation_id);
+
+        CREATE TABLE IF NOT EXISTS meta_ad_insights (
+          tenant_id VARCHAR(50) NOT NULL,
+          ad_id VARCHAR(100) NOT NULL,
+          ad_name VARCHAR(255),
+          campaign_id VARCHAR(100),
+          campaign_name VARCHAR(255),
+          adset_id VARCHAR(100),
+          adset_name VARCHAR(255),
+          spend NUMERIC(12, 2) DEFAULT 0,
+          impressions INT DEFAULT 0,
+          clicks INT DEFAULT 0,
+          cpc NUMERIC(8, 2) DEFAULT 0,
+          manual_spend NUMERIC(12, 2) DEFAULT NULL,
+          synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (tenant_id, ad_id)
+        );
+
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS meta_ad_id VARCHAR(100);
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS meta_ad_headline TEXT;
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS meta_campaign_name VARCHAR(255);
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS invoiced_amount NUMERIC(12, 2) DEFAULT 0;
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS sale_confirmed_at TIMESTAMP;
+        ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS sale_items_summary TEXT;
+
+        ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS meta_ad_account_id VARCHAR(100) DEFAULT '';
+        ALTER TABLE tenant_configs ADD COLUMN IF NOT EXISTS meta_marketing_token TEXT DEFAULT '';
+      `);
+
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');

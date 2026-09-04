@@ -33,6 +33,18 @@ interface ChatMessage {
       address?: string;
     };
     in_reply_to?: any;
+    referral?: {
+      headline?: string;
+      body?: string;
+      source_type?: string;
+      source_id?: string;
+      source_url?: string;
+      image_url?: string;
+      video_url?: string;
+      thumbnail_url?: string;
+      ctwa_clid?: string;
+    };
+    [key: string]: any;
   };
   attachments?: ChatAttachment[];
   sender?: {
@@ -50,6 +62,20 @@ interface ConversationItem {
   timestamp?: number;
   created_at?: number;
   labels: string[];
+  additional_attributes?: {
+    referral?: {
+      headline?: string;
+      body?: string;
+      source_type?: string;
+      source_id?: string;
+      source_url?: string;
+      image_url?: string;
+      video_url?: string;
+      thumbnail_url?: string;
+      ctwa_clid?: string;
+    };
+    [key: string]: any;
+  };
   meta: {
     sender: {
       name: string;
@@ -1967,8 +1993,33 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                         {selectedConv.status === 'pending' && !selectedConv.labels?.includes('bot-escalado') ? 'Atención por IA' : 'Atención Humana'}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.1rem' }}>
-                      CHAT DE WHATSAPP • {selectedConv.meta?.sender?.phone_number || ''}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        CHAT DE WHATSAPP • {selectedConv.meta?.sender?.phone_number || ''}
+                      </div>
+
+                      {(() => {
+                        const convRef = selectedConv.additional_attributes?.referral || 
+                          messages.find(m => (m.content_attributes as any)?.referral)?.content_attributes?.referral;
+                        if (!convRef) return null;
+                        return (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            backgroundColor: 'rgba(0, 206, 255, 0.12)',
+                            color: '#00CEFF',
+                            border: '1px solid rgba(0, 206, 255, 0.35)',
+                            padding: '0.12rem 0.45rem',
+                            borderRadius: '5px',
+                            fontSize: '0.67rem',
+                            fontWeight: 800
+                          }} title={convRef.body || convRef.headline || ''}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '0.8rem' }}>ads_click</span>
+                            <span>Anuncio Meta: {convRef.headline || `#${convRef.source_id || 'CTWA'}`}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2324,6 +2375,105 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                           }
 
                           return null;
+                        })()}
+
+                        {/* CLICK-TO-WHATSAPP (CTWA) META AD REFERRAL CARD */}
+                        {(() => {
+                          const referral = (m.content_attributes as any)?.referral;
+                          if (!referral) return null;
+
+                          const adHeadline = referral.headline;
+                          const adBody = referral.body;
+                          const adImage = referral.image_url || referral.thumbnail_url;
+                          const adSourceId = referral.source_id;
+                          const adSourceUrl = referral.source_url;
+
+                          return (
+                            <div style={{
+                              backgroundColor: '#0c1b33',
+                              borderRadius: '12px',
+                              border: '1px solid #2563eb',
+                              overflow: 'hidden',
+                              marginTop: '0.6rem',
+                              marginBottom: '0.4rem',
+                              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.25)',
+                              maxWidth: '400px'
+                            }}>
+                              {/* Header Pill */}
+                              <div style={{
+                                backgroundColor: '#1e3a8a',
+                                padding: '0.45rem 0.75rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                borderBottom: '1px solid rgba(59, 130, 246, 0.3)'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#93c5fd', fontSize: '0.74rem', fontWeight: 800 }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#60a5fa' }}>ads_click</span>
+                                  <span>Anuncio de Meta (Click-to-WhatsApp)</span>
+                                </div>
+                                {adSourceId && (
+                                  <span style={{ fontSize: '0.68rem', color: '#cbd5e1', fontWeight: 700, backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                                    ID: {adSourceId}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Media Image */}
+                              {adImage && (
+                                <div style={{ position: 'relative', width: '100%', maxHeight: '180px', overflow: 'hidden', backgroundColor: '#020617' }}>
+                                  <img
+                                    src={adImage}
+                                    alt={adHeadline || 'Meta Ad'}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Ad Content */}
+                              <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                {adHeadline && (
+                                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.3 }}>
+                                    {adHeadline}
+                                  </div>
+                                )}
+
+                                {adBody && (
+                                  <div style={{ fontSize: '0.76rem', color: '#cbd5e1', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {adBody}
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.35rem', paddingTop: '0.45rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                                  <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+                                    Origen: Campaña Meta Ads
+                                  </span>
+                                  {adSourceUrl && (
+                                    <a
+                                      href={adSourceUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        color: '#38bdf8',
+                                        textDecoration: 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.2rem'
+                                      }}
+                                    >
+                                      <span>Ver Anuncio</span>
+                                      <span className="material-symbols-outlined" style={{ fontSize: '0.8rem' }}>open_in_new</span>
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
                         })()}
 
                         {/* WHATSAPP GPS LOCATION CARD (STRICTLY FOR REAL LOCATION DATA) */}
