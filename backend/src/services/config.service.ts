@@ -646,7 +646,12 @@ class ConfigService {
   async getLogs(tenantId: string, limit: number = 50) {
     await this.init();
     const res = await this.pool.query(
-      'SELECT * FROM logs WHERE tenant_id = $1 ORDER BY timestamp DESC LIMIT $2',
+      `SELECT l.*, r.source_id as meta_ad_id, r.headline as meta_headline, r.image_url as meta_image_url
+       FROM logs l
+       LEFT JOIN meta_ad_referrals r ON r.tenant_id = l.tenant_id AND r.conversation_id = l.conversation_id
+       WHERE l.tenant_id = $1 
+       ORDER BY l.timestamp DESC 
+       LIMIT $2`,
       [tenantId, limit]
     );
     return res.rows;
@@ -690,9 +695,11 @@ class ConfigService {
   async getConversationLogs(tenantId: string, conversationId: string) {
     await this.init();
     const res = await this.pool.query(
-      `SELECT * FROM logs
-       WHERE tenant_id = $1 AND conversation_id = $2
-       ORDER BY timestamp ASC`,
+      `SELECT l.*, r.source_id as meta_ad_id, r.headline as meta_headline, r.image_url as meta_image_url
+       FROM logs l
+       LEFT JOIN meta_ad_referrals r ON r.tenant_id = l.tenant_id AND r.conversation_id = l.conversation_id
+       WHERE l.tenant_id = $1 AND l.conversation_id = $2
+       ORDER BY l.timestamp ASC`,
       [tenantId, conversationId]
     );
     return res.rows;

@@ -2120,6 +2120,7 @@ function App() {
               {activeTab === 'products' && 'Catálogo de Productos & Inventario'}
               {activeTab === 'chats' && 'Auditoría de Historial de Chats'}
               {activeTab === 'analytics' && 'Reportes & Analítica BI'}
+              {activeTab === 'meta-roi' && 'Atribución Meta Ads vs Facturado (ROI)'}
               {activeTab === 'lost-sales' && 'Análisis de Ventas Perdidas'}
               {activeTab === 'activity' && 'Bitácora de Telemetría en Vivo'}
               {activeTab === 'webhook' && 'Conexión de Webhook Unificado'}
@@ -4175,6 +4176,30 @@ function App() {
                           >
                             Conversación #{log.conversation_id} ↗
                           </span>
+
+                          {/* META AD ATTRIBUTION BADGE IF LOG FROM AD */}
+                          {(log as any).meta_ad_id && (
+                            <span
+                              onClick={() => setActiveTab('meta-roi')}
+                              title={`Anuncio Meta: ${(log as any).meta_headline || (log as any).meta_ad_id} - Haz clic para ver Atribución y ROAS`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                color: '#0369a1',
+                                backgroundColor: '#f0f9ff',
+                                border: '1px solid #7dd3fc',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '5px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: '0.85rem', color: '#0284c7' }}>ads_click</span>
+                              <span>Meta Ad #{(log as any).meta_ad_id}</span>
+                            </span>
+                          )}
                         </div>
                         <span className="log-time" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
                           {formatTime(log.timestamp)}
