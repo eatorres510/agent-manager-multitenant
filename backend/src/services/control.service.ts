@@ -549,8 +549,25 @@ export class ControlService {
       // Sort strictly chronologically by time received (newest first)
       allConvs.sort((a, b) => (b.last_activity_at || 0) - (a.last_activity_at || 0));
 
-      this.convCache[cacheKey] = { data: allConvs, timestamp: now };
-      return allConvs;
+      // DEDUPLICATION SAFEGUARD: Ensure strictly 1 conversation card per customer phone number for open chats
+      const seenContactKeys = new Set<string>();
+      const uniqueConvs: any[] = [];
+      for (const c of allConvs) {
+        const rawPhone = (c.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
+        const phoneKey = rawPhone.length >= 8 ? rawPhone.slice(-8) : '';
+        const dedupeKey = phoneKey ? `phone_${phoneKey}` : `conv_${c.id}`;
+
+        if (c.status === 'open' || c.status === 'pending') {
+          if (seenContactKeys.has(dedupeKey)) {
+            continue; // Skip duplicate open conversation card
+          }
+          seenContactKeys.add(dedupeKey);
+        }
+        uniqueConvs.push(c);
+      }
+
+      this.convCache[cacheKey] = { data: uniqueConvs, timestamp: now };
+      return uniqueConvs;
     } catch (err: any) {
       console.error('[Get Conversations Error]', err.message);
       return this.convCache[cacheKey]?.data || [];

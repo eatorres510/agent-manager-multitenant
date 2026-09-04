@@ -1211,6 +1211,19 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
   filteredConvs.sort((a, b) => getNormalizedTime(b) - getNormalizedTime(a));
 
+  // DEDUPLICATION SAFEGUARD: Ensure never showing two cards for the same customer phone in the sidebar
+  const seenPhones = new Set<string>();
+  filteredConvs = filteredConvs.filter(c => {
+    const rawPhone = (c.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
+    const phoneKey = rawPhone.length >= 8 ? rawPhone.slice(-8) : '';
+    if (!phoneKey) return true;
+    if (seenPhones.has(phoneKey)) {
+      return false; // Suppress duplicate card for the same customer
+    }
+    seenPhones.add(phoneKey);
+    return true;
+  });
+
   // GUARANTEE: If selectedConv is open in main panel, ensure it is ALWAYS included in sidebar filteredConvs!
   if (selectedConv && !filteredConvs.some(c => c.id === selectedConv.id)) {
     filteredConvs = [selectedConv, ...filteredConvs];
