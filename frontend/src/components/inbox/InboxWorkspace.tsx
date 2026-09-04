@@ -560,6 +560,18 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
                 if (updatedSelected.status !== selectedConvRef.current.status) {
                   setSelectedConv(updatedSelected);
                 }
+              } else {
+                // The selected conversation was merged or deleted; fallback to valid conversation
+                const currentPhone = (selectedConvRef.current?.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
+                const currentClean = currentPhone.length >= 8 ? currentPhone.slice(-8) : '';
+                const fallback = currentClean 
+                  ? convList.find(c => (c.meta?.sender?.phone_number || '').includes(currentClean))
+                  : null;
+                const nextConv = fallback || convList[0];
+                if (nextConv) {
+                  setSelectedConv(nextConv);
+                  fetchMessages(nextConv.id.toString(), false);
+                }
               }
             }
           }
@@ -1211,22 +1223,31 @@ export const InboxWorkspace: React.FC<InboxWorkspaceProps> = ({ tenantId, token,
 
   filteredConvs.sort((a, b) => getNormalizedTime(b) - getNormalizedTime(a));
 
-  // DEDUPLICATION SAFEGUARD: Ensure never showing two cards for the same customer phone in the sidebar
-  const seenPhones = new Set<string>();
+  // DEDUPLICATION SAFEGUARD: Ensure never showing two cards for the same customer in the sidebar
+  const seenContactKeys = new Set<string>();
   filteredConvs = filteredConvs.filter(c => {
     const rawPhone = (c.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
     const phoneKey = rawPhone.length >= 8 ? rawPhone.slice(-8) : '';
-    if (!phoneKey) return true;
-    if (seenPhones.has(phoneKey)) {
+    const nameKey = (c.meta?.sender?.name || '').trim().toLowerCase();
+    const dedupeKey = phoneKey ? `phone_${phoneKey}` : nameKey ? `name_${nameKey}` : `conv_${c.id}`;
+
+    if (seenContactKeys.has(dedupeKey)) {
       return false; // Suppress duplicate card for the same customer
     }
-    seenPhones.add(phoneKey);
+    seenContactKeys.add(dedupeKey);
     return true;
   });
 
-  // GUARANTEE: If selectedConv is open in main panel, ensure it is ALWAYS included in sidebar filteredConvs!
-  if (selectedConv && !filteredConvs.some(c => c.id === selectedConv.id)) {
-    filteredConvs = [selectedConv, ...filteredConvs];
+  // GUARANTEE: If selectedConv is open in main panel, ensure it is in filteredConvs ONLY IF its customer isn't already present!
+  if (selectedConv) {
+    const rawPhone = (selectedConv.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
+    const phoneKey = rawPhone.length >= 8 ? rawPhone.slice(-8) : '';
+    const nameKey = (selectedConv.meta?.sender?.name || '').trim().toLowerCase();
+    const dedupeKey = phoneKey ? `phone_${phoneKey}` : nameKey ? `name_${nameKey}` : `conv_${selectedConv.id}`;
+
+    if (!seenContactKeys.has(dedupeKey) && !filteredConvs.some(c => c.id === selectedConv.id)) {
+      filteredConvs = [selectedConv, ...filteredConvs];
+    }
   }
 
   const myAssignedCount = conversations.filter(c => isAssignedToUser(c)).length;

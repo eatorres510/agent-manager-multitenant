@@ -416,6 +416,7 @@ export class ControlService {
         LEFT JOIN contacts ct ON c.contact_id = ct.id
         LEFT JOIN users u ON c.assignee_id = u.id
         WHERE c.account_id = $1 ${statusFilter}
+          AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
         ORDER BY c.last_activity_at DESC;
       `;
 
@@ -549,20 +550,19 @@ export class ControlService {
       // Sort strictly chronologically by time received (newest first)
       allConvs.sort((a, b) => (b.last_activity_at || 0) - (a.last_activity_at || 0));
 
-      // DEDUPLICATION SAFEGUARD: Ensure strictly 1 conversation card per customer phone number for open chats
+      // DEDUPLICATION SAFEGUARD: Ensure strictly 1 conversation card per customer across the entire list
       const seenContactKeys = new Set<string>();
       const uniqueConvs: any[] = [];
       for (const c of allConvs) {
         const rawPhone = (c.meta?.sender?.phone_number || '').replace(/[^0-9]/g, '');
         const phoneKey = rawPhone.length >= 8 ? rawPhone.slice(-8) : '';
-        const dedupeKey = phoneKey ? `phone_${phoneKey}` : `conv_${c.id}`;
+        const nameKey = (c.meta?.sender?.name || '').trim().toLowerCase();
+        const dedupeKey = phoneKey ? `phone_${phoneKey}` : nameKey ? `name_${nameKey}` : `conv_${c.id}`;
 
-        if (c.status === 'open' || c.status === 'pending') {
-          if (seenContactKeys.has(dedupeKey)) {
-            continue; // Skip duplicate open conversation card
-          }
-          seenContactKeys.add(dedupeKey);
+        if (seenContactKeys.has(dedupeKey)) {
+          continue; // Always suppress duplicate card for the same customer
         }
+        seenContactKeys.add(dedupeKey);
         uniqueConvs.push(c);
       }
 
